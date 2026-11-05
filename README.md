@@ -35,6 +35,29 @@ Note pratiche:
 - I font (Poppins, Roboto Mono) arrivano da Google Fonts. Senza internet l'app funziona lo stesso, con i font di sistema.
 - Ogni gruppo può lavorare da più computer insieme: i campi si salvano dopo 800 ms di pausa, e gli altri vedono le modifiche in pochi istanti. Due persone che scrivono nello **stesso** campo nello stesso momento vedranno vincere l'ultima che salva. Campi diversi non si sovrascrivono mai.
 
+## Deploy su Railway
+
+Il repository contiene un `Dockerfile` e un `railway.json`: Railway costruisce l'immagine con Docker invece di Railpack.
+Così il build non scarica strumenti da GitHub, che a volte risponde con errori 504, e l'immagine include LaTeX per il PDF.
+
+1. **New Project → Deploy from GitHub repo** → scegliete questo repository.
+2. **Variables** del servizio:
+   - `CODICE_CORSO` e `CODICE_DOCENTE`: **obbligatorie**, senza l'app non parte;
+   - `SEED_ESEMPIO=1`: facoltativa, crea la Task Force di esempio al primo avvio (solo se il database è vuoto);
+   - `WITH_LATEX=0`: facoltativa, immagine più leggera e build più veloce, senza PDF sul server (resta l'export per Overleaf).
+3. **Volume:** aggiungete un Volume al servizio, montato per esempio su `/data`. L'app lo trova da sola
+   (`RAILWAY_VOLUME_MOUNT_PATH`) e ci mette il database. **Senza Volume i dati si cancellano a ogni deploy**:
+   nel log compare un avviso.
+4. **Networking → Generate Domain** per avere l'indirizzo pubblico (HTTPS).
+5. Tenete **una sola replica**: database SQLite ed eventi in tempo reale stanno in un solo processo.
+
+Il primo build richiede qualche minuto, perché installa TeX Live, e compila il libro di esempio per verificare che LaTeX funzioni.
+L'healthcheck è su `/salute`.
+
+**Guida socratica su Railway.** Ollama non gira sul vostro portatile in aula, ma sul server, quindi su Railway la guida è spenta
+finché non impostate `AI_BASE_URL` (più `AI_MODEL` ed eventualmente `AI_API_KEY`). Può puntare a un vostro server con Ollama
+raggiungibile in HTTPS, o a un servizio compatibile OpenAI che offra modelli open.
+
 ## Server Linux dietro reverse proxy
 
 ```bash
@@ -65,7 +88,8 @@ Servite il sito in HTTPS: i codici viaggiano negli header delle richieste.
 | `CODICE_DOCENTE` | — (obbligatoria) | Codice per la lavagna, per eliminare Task Force e scaricare il libro intero. Vale anche come codice del corso |
 | `PORT` | `3000` | Porta |
 | `HOST` | `0.0.0.0` | Indirizzo di ascolto (`127.0.0.1` dietro un reverse proxy) |
-| `DB_FILE` | `./data/cantiere.sqlite` | File del database |
+| `DB_FILE` | `./data/cantiere.sqlite` (su Railway con Volume: `<volume>/cantiere.sqlite`) | File del database |
+| `SEED_ESEMPIO` | — | `1` crea la Task Force di esempio all'avvio, solo se il database è vuoto |
 | `AI_BASE_URL` | — | Attiva la Guida socratica e «Bozza con AI»: endpoint compatibile OpenAI, es. `http://localhost:11434/v1` (Ollama) |
 | `AI_MODEL` | — | Nome del modello, es. `qwen2.5:14b` |
 | `AI_API_KEY` | — | Facoltativa, per endpoint che la richiedono |
@@ -220,7 +244,7 @@ Lanciatelo a server fermo, oppure ricaricate la pagina dopo.
 
 ```
 server/
-  index.js     avvio, porta, indirizzi di rete
+  index.js     avvio, porta, indirizzi di rete, avviso se manca il Volume su Railway
   app.js       API Express, autenticazione con codici, SSE, export
   db.js        schema SQLite e merge patch transazionale
   export.js    parte e libro in Markdown (funzioni pure)
@@ -239,7 +263,9 @@ public/
   js/pages.js     Task Force, Verifica, Lavagna, Registro, Esporta
   js/socratico.js pannello della guida socratica
   js/app.js       router, barra in alto, menu, login, eventi
-scripts/seed.js   capitolo di esempio
+scripts/seed.js   Task Force di esempio
+scripts/check-latex.js  verifica di LaTeX nel build Docker
+Dockerfile, railway.json  deploy su Railway
 test/             node:test (merge patch, export Markdown e LaTeX/PDF, API, bozza AI, riuso, guida socratica)
 ```
 

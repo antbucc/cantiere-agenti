@@ -234,6 +234,11 @@ export function createApp({ dbFile, courseCode, teacherCode, env = process.env }
     res.status(err.status || 500).json({ error: err.expose ? err.message : 'Errore del server' });
   });
 
+  // Healthcheck senza codice (Railway, reverse proxy, monitoraggio)
+  app.get('/salute', (req, res) => {
+    try { store.db.prepare('SELECT 1').get(); res.json({ ok: true }); } catch { res.status(503).json({ ok: false }); }
+  });
+
   app.use('/api', api);
   app.use(express.static(PUBLIC_DIR, { extensions: ['html'], setHeaders: (res) => res.set('Cache-Control', 'no-cache') }));
 

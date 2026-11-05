@@ -2,11 +2,10 @@
 // da mostrare in aula come capitolo modello. Non tocca le altre Task Force.
 
 import 'dotenv/config';
-import path from 'node:path';
-import { openDb } from '../server/db.js';
+import { openDb, defaultDbFile } from '../server/db.js';
 
 const NAME = 'Esempio · Onboarding';
-const DB_FILE = process.env.DB_FILE || path.join(process.cwd(), 'data', 'cantiere.sqlite');
+const DB_FILE = defaultDbFile();
 const at = (d) => new Date(d).toISOString();
 
 export const exampleDoc = {
@@ -105,8 +104,13 @@ export const exampleDoc = {
   },
 };
 
-export function seed(dbFile = DB_FILE) {
+/**
+ * Crea (o rigenera) la Task Force di esempio.
+ * Con onlyIfEmpty: true non fa nulla se c'è già almeno una Task Force.
+ */
+export function seed(dbFile = DB_FILE, { onlyIfEmpty = false } = {}) {
   const store = openDb(dbFile);
+  if (onlyIfEmpty && store.listGroups().length) { store.db.close(); return null; }
   const existing = store.getGroupByName(NAME);
   if (existing) store.deleteGroup(existing.id);
   const g = store.createGroup({ name: NAME, data: exampleDoc, id: 'esempio-onboarding' });

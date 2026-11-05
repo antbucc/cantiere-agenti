@@ -8,6 +8,16 @@ import path from 'node:path';
 import { mergePatch, isPlainObject } from '../public/js/merge.js';
 import { emptyDoc, newId } from '../public/js/model.js';
 
+/**
+ * Dove sta il database: DB_FILE se impostato; altrimenti nel Volume di Railway,
+ * se c'è (Railway imposta RAILWAY_VOLUME_MOUNT_PATH); altrimenti ./data/.
+ */
+export function defaultDbFile(env = process.env) {
+  if (env.DB_FILE) return env.DB_FILE;
+  if (env.RAILWAY_VOLUME_MOUNT_PATH) return path.join(env.RAILWAY_VOLUME_MOUNT_PATH, 'cantiere.sqlite');
+  return path.join(process.cwd(), 'data', 'cantiere.sqlite');
+}
+
 export function openDb(file) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new Database(file);

@@ -1,12 +1,23 @@
 // Avvio del server: `npm start`.
 import 'dotenv/config';
 import os from 'node:os';
-import path from 'node:path';
 import { createApp } from './app.js';
+import { defaultDbFile } from './db.js';
+import { seed } from '../scripts/seed.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
-const DB_FILE = process.env.DB_FILE || path.join(process.cwd(), 'data', 'cantiere.sqlite');
+const DB_FILE = defaultDbFile();
+
+// Su Railway il disco del container si azzera a ogni deploy: senza Volume si perdono i dati.
+if (process.env.RAILWAY_ENVIRONMENT && !process.env.RAILWAY_VOLUME_MOUNT_PATH && !process.env.DB_FILE) {
+  console.warn('\n⚠ Railway senza Volume: il database verrà CANCELLATO a ogni deploy o riavvio.\n  Aggiungete un Volume al servizio (es. montato su /data): verrà usato in automatico.\n');
+}
+
+// SEED_ESEMPIO=1: crea la Task Force di esempio, ma solo se il database è vuoto.
+if (process.env.SEED_ESEMPIO === '1') {
+  try { seed(DB_FILE, { onlyIfEmpty: true }); } catch (e) { console.warn('Esempio non creato:', e.message); }
+}
 
 let ctx;
 try {
