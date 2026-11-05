@@ -284,7 +284,7 @@ export function groupToLatex(group, { slug = labelSlug(group.name), agentLabel =
 // Preambolo e documento
 // ---------------------------------------------------------------------------
 
-export const PREAMBLE = String.raw`% Preambolo del libro "Agenti al Lavoro" — generato da Cantiere · Agenti al Lavoro.
+export const PREAMBLE = String.raw`% Preambolo del libro "Agenti al Lavoro" — generato da Dify.
 % Compila con pdfLaTeX (predefinito su Overleaf), XeLaTeX o LuaLaTeX.
 \usepackage{iftex}
 \ifPDFTeX
@@ -307,7 +307,7 @@ export const PREAMBLE = String.raw`% Preambolo del libro "Agenti al Lavoro" — 
 \usepackage{titlesec}
 \usepackage[hidelinks,bookmarksnumbered]{hyperref}
 
-% Palette del Cantiere
+% Palette di Dify
 \definecolor{primario}{HTML}{505DBC}
 \definecolor{secondario}{HTML}{97EFD8}
 \definecolor{giallo}{HTML}{FFC000}
@@ -371,7 +371,7 @@ const pad = (n) => String(n).padStart(2, '0');
  * Il libro come progetto: { 'main.tex': ..., 'preambolo.tex': ..., 'parti/01-....tex': ... }.
  * Va bene sia per lo zip da caricare su Overleaf sia per la compilazione in locale.
  */
-export function bookProject(groups, { titolo = 'Agenti al Lavoro', sottotitolo = "Libro dei casi d'uso del Cantiere" } = {}) {
+export function bookProject(groups, { titolo = 'Agenti al Lavoro', sottotitolo = "Libro dei casi d'uso" } = {}) {
   const ordered = bookOrder(groups).flatMap((x) => x.groups);
   const slugs = uniqueSlugs(ordered);
   const agentLabel = agentLabels(ordered, slugs);
@@ -418,7 +418,7 @@ export function bookProject(groups, { titolo = 'Agenti al Lavoro', sottotitolo =
     lezioni || '\\textit{Nessuna Task Force.}',
   ].join('\n');
 
-  files['main.tex'] = String.raw`% Libro "Agenti al Lavoro" — progetto LaTeX generato da Cantiere · Agenti al Lavoro.
+  files['main.tex'] = String.raw`% Libro "Agenti al Lavoro" — progetto LaTeX generato da Dify.
 % Su Overleaf: New Project → Upload Project → questo .zip. Compilatore: pdfLaTeX (predefinito).
 % Ogni Task Force è un file in parti/: potete correggerlo, riordinarlo o toglierlo da qui sotto.
 % Label disponibili: part:<task-force>, cap:<task-force>:<capitolo>, agente:<task-force>:<id>,
@@ -458,7 +458,7 @@ export function groupProject(group) {
   return {
     'preambolo.tex': PREAMBLE,
     [`parti/${slug}.tex`]: groupToLatex(group, { slug }),
-    'main.tex': String.raw`% Parte di una Task Force (11 capitoli) — generata da Cantiere · Agenti al Lavoro.
+    'main.tex': String.raw`% Parte di una Task Force (11 capitoli) — generata da Dify.
 % Su Overleaf: New Project → Upload Project → questo .zip. Compilatore: pdfLaTeX (predefinito).
 \documentclass[11pt,a4paper,openany]{book}
 \input{preambolo}

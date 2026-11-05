@@ -40,9 +40,9 @@ function startSetupServer(problems) {
     + (process.env.RAILWAY_ENVIRONMENT ? '\n  Impostate le variabili nel tab Variables del servizio su Railway.\n' : '\n  Copiate .env.example in .env e impostate i codici.\n'));
   const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;');
   const page = `<!doctype html><html lang="it"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Cantiere · configurazione</title>
+<title>Dify · configurazione</title>
 <style>body{font:16px/1.6 system-ui,sans-serif;background:#F3F3F1;color:#23243a;margin:0;padding:40px 16px}main{max-width:640px;margin:auto;background:#fff;border-radius:14px;padding:24px 28px;border-top:6px solid #E26D5A}h1{font-size:1.3rem}code{background:#eee;padding:1px 5px;border-radius:4px}li{margin:6px 0}</style>
-<main><h1>Cantiere · Agenti al Lavoro non è ancora configurato</h1>
+<main><h1>Dify non è ancora configurato</h1>
 <ul>${problems.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>
 <p>${where}</p>
 <p>Esempio: <code>CODICE_CORSO=agenti-2026</code> e <code>CODICE_DOCENTE=</code> una frase lunga che conoscete solo voi.</p></main></html>`;
@@ -74,7 +74,7 @@ function start() {
   const ctx = createApp({ dbFile: DB_FILE, courseCode: process.env.CODICE_CORSO.trim(), teacherCode: process.env.CODICE_DOCENTE.trim() });
 
   const server = ctx.app.listen(PORT, HOST, () => {
-    console.log('\nCantiere · Agenti al Lavoro');
+    console.log('\nDify');
     console.log(`  locale:        http://localhost:${PORT}`);
     // Indirizzi della rete locale, da proiettare in aula
     for (const ifaces of Object.values(os.networkInterfaces())) {

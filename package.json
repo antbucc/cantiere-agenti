@@ -1,7 +1,7 @@
 {
   "name": "cantiere-agenti",
   "version": "1.0.0",
-  "description": "Cantiere · Agenti al Lavoro — strumento di lavoro per le Task Force del corso su AI literacy e agenti AI",
+  "description": "Dify — strumento di lavoro per le Task Force del corso su AI literacy e agenti AI",
   "type": "module",
   "private": true,
   "main": "server/index.js",

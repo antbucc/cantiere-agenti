@@ -1,4 +1,4 @@
-# Cantiere · Agenti al Lavoro — immagine per Railway (o qualsiasi host Docker).
+# Dify — immagine per Railway (o qualsiasi host Docker).
 #
 # Con un Dockerfile Railway non usa Railpack: niente download di mise da GitHub
 # durante il build, e possiamo installare LaTeX per il PDF.

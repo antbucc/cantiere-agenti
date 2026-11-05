@@ -1,4 +1,4 @@
-# Cantiere · Agenti al Lavoro
+# Dify
 
 Strumento di lavoro per le Task Force del corso di due giornate su AI literacy e agenti AI.
 Ogni gruppo compila, capitolo per capitolo, la propria parte di un libro collettivo di casi d'uso;
