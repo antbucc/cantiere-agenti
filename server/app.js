@@ -163,11 +163,12 @@ export function createApp({ dbFile, courseCode, teacherCode, env = process.env }
     const g = store.getGroup(req.body?.groupId);
     if (!g) return res.status(404).json({ error: 'Task Force non trovata' });
     const { section, field, messages } = req.body || {};
+    const intent = ['guida', 'parere', 'domanda', 'libero'].includes(req.body?.intent) ? req.body.intent : 'libero';
     if (!Array.isArray(messages) || !messages.length) return res.status(400).json({ error: 'Nessun messaggio' });
     const abort = new AbortController();
     res.on('close', () => { if (!res.writableEnded) abort.abort(); }); // l'utente ha chiuso o interrotto
     try {
-      const stream = streamSocratico({ doc: g.data, section, field, messages }, env, abort.signal);
+      const stream = streamSocratico({ doc: g.data, section, field, intent, messages }, env, abort.signal);
       const first = await stream.next(); // gli errori di connessione arrivano qui, prima degli header
       res.set({ 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' });
       if (!first.done) res.write(first.value);

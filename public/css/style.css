@@ -500,3 +500,42 @@ body.soc-open .soc-fab { display: none; }
 .fmt { display: grid; }
 .fmt small { color: var(--muted); font-size: 0.78rem; }
 @media (max-width: 860px) { .export-row { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- Guida socratica: percorso guidato ---------- */
+.soc-panel { height: min(700px, calc(100vh - var(--top) - 40px)); }
+.soc-guide { flex: none; max-height: 46%; overflow-y: auto; padding: 10px 12px 4px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.soc-step { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--primary); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+.soc-step.azione { border-left-color: var(--yellow); }
+.soc-step.complete { border-left-color: var(--green); }
+.soc-step p { margin: 4px 0; font-size: 0.86rem; }
+.soc-step-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.soc-kicker { font: 700 0.68rem var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.soc-count { font: 600 0.72rem var(--font); padding: 1px 8px; border-radius: 99px; background: var(--primary-soft); color: var(--primary); white-space: nowrap; }
+.soc-count.ok { background: color-mix(in srgb, var(--green) 18%, transparent); color: var(--green); }
+.soc-step-label { font-weight: 600; font-size: 0.95rem !important; color: var(--ink); }
+.soc-q { font-style: italic; color: var(--ink); }
+.soc-hint { color: var(--muted); line-height: 1.45; }
+.soc-hint b { color: var(--ink); font-weight: 600; }
+.soc-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.soc-actions .btn { padding: 5px 10px; font-size: 0.8rem; }
+.soc-done { display: grid; gap: 4px; background: color-mix(in srgb, var(--green) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--green) 40%, transparent); border-radius: 12px; padding: 8px 12px; margin-bottom: 8px; font-size: 0.86rem; }
+.soc-done .soc-actions { margin-top: 2px; }
+.soc-all { font-size: 0.82rem; margin: 2px 0 8px; }
+.soc-all summary { cursor: pointer; color: var(--primary); font-weight: 600; }
+.soc-all ol { margin: 6px 0 0; padding-left: 22px; max-height: 160px; overflow-y: auto; }
+.soc-all li { margin: 1px 0; }
+.soc-all li button { border: 0; background: none; padding: 1px 0; text-align: left; cursor: pointer; color: var(--ink); font: inherit; }
+.soc-all li button:hover { color: var(--primary); text-decoration: underline; }
+.soc-all li.on button { font-weight: 700; color: var(--primary); }
+.soc-all li.skipped button { color: var(--muted); text-decoration: line-through; }
+.soc-quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 12px 0; }
+.soc-quick button { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 99px; padding: 4px 10px; font: 500 0.76rem var(--font); cursor: pointer; }
+.soc-quick button:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+.soc-quick button:disabled { opacity: 0.5; cursor: default; }
+.soc-badge { min-width: 22px; height: 22px; padding: 0 6px; border-radius: 99px; display: inline-grid; place-items: center; background: var(--yellow); color: #3b2c00; font: 700 0.75rem var(--mono); }
+.soc-badge[hidden] { display: none; }
+/* domande rapide su una riga scorrevole: lasciano più spazio alla conversazione */
+.soc-quick { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.soc-quick::-webkit-scrollbar { display: none; }
+.soc-quick button { flex: none; }
+.soc-guide { max-height: 42%; }

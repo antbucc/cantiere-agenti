@@ -169,20 +169,38 @@ curl -H "X-Codice-Corso: IL_CODICE" http://localhost:3000/api/export/esempio-onb
 
 ## Guida socratica (LLM open)
 
-In basso a destra c'è il pulsante **? Guida socratica**. Apre un pannello che sa in quale capitolo siete e su quale campo
-stavate scrivendo (l'ultimo in cui avete cliccato). La guida:
+In basso a destra c'è il pulsante **? Guida socratica**. Il numero accanto dice quanti passi mancano nel capitolo aperto.
+La guida accompagna la Task Force **capitolo per capitolo e campo per campo**.
 
-- **non scrive mai la soluzione**: fa una domanda alla volta, parte da ciò che avete già scritto e lo mette in discussione;
-- **spiega i concetti** (precondizioni, criteri di accettazione, fasce dell'AI Act…) con esempi presi da casi *diversi* dal vostro;
-- se insistete perché scriva lei la risposta, rifiuta e vi offre un appiglio;
-- quando una vostra formulazione funziona ve lo dice, spiega perché e vi invita a scriverla.
+**Il percorso guidato** (in cima al pannello) mostra sempre il *prossimo passo* del capitolo, nell'ordine giusto:
+- prima le **azioni** che creano la struttura (es. «manca una persona toccata ma non utente», «congelate la prima versione del prompt»);
+- poi i **campi** da compilare, ognuno con la sua scheda: *a cosa serve* e *quando è buono*.
 
-Solo **le frasi scritte dal gruppo** hanno sotto il pulsante «↳ Inserisci in «campo»», che le mette nel campo (in fondo, se è già compilato).
-Le risposte della guida non si possono inserire: è una scelta didattica. C'è una conversazione per Task Force e per capitolo,
-che resta se ricaricate la pagina e sparisce quando chiudete il browser. Le conversazioni non vengono salvate sul server.
+I pulsanti sono **Mostrami** (porta al campo o al pulsante giusto e lo evidenzia), **Ragioniamoci insieme** (apre il dialogo
+su quel passo) e **Salta**. L'elenco completo dei passi è sotto la scheda. Quando un campo del percorso viene compilato,
+la guida lo nota e propone un **parere critico** prima di passare al successivo.
 
-Il contesto (scenario, contenuto del capitolo, problemi rilevati, campo attivo) lo costruisce il server dal capitolo salvato.
-Le regole della guida sono in [server/socratico.js](server/socratico.js) (`SYSTEM_PROMPT` e `SECTION_FOCUS`): modificatele lì.
+**Le domande.** Se qualcosa non è chiaro, i gruppi chiedono, anche con le domande rapide come «Non capiamo cosa chiede
+questo campo», «Parere su…» o «Spiegateci: …». La guida risponde in modo **corretto** perché il server le passa:
+- il **glossario del corso** (definizioni ed esempi su casi diversi: precondizioni, criteri di accettazione, router, fasce dell'AI Act…);
+- la **scheda del campo** attivo;
+- lo stato del capitolo e i prossimi passi.
+
+Se una domanda esce dal corso (cifre di sanzioni, norme, prezzi) lo dice e rimanda al docente, invece di inventare.
+
+**Non risolutiva.** La guida spiega e valuta, ma non scrive il contenuto dei campi. Oltre alle regole del prompt ci sono due
+controlli deterministici sul testo in streaming:
+1. **citazioni lunghe sul vostro caso:** una frase tra virgolette lunga che riguarda il caso del gruppo (molte parole in comune
+   con il suo scenario) viene sostituita da «(questa parte la scrivete voi)». Restano le citazioni del testo del gruppo
+   e gli esempi su casi diversi;
+2. **una sola domanda:** la risposta si chiude alla prima domanda, e la generazione viene interrotta.
+
+Solo **le frasi scritte dal gruppo** hanno sotto il pulsante «↳ Inserisci», che le mette nel campo attivo.
+C'è una conversazione per Task Force e per capitolo, che resta se ricaricate la pagina; non viene salvata sul server.
+
+Dove modificare la guida:
+- regole e intenti: [server/socratico.js](server/socratico.js) (`SYSTEM_PROMPT`, `INTENTS`);
+- schede dei campi, glossario e ordine dei passi: [public/js/guida.js](public/js/guida.js) (`FIELD_GUIDE`, `GLOSSARIO`).
 
 ### Configurazione con Ollama (consigliata: tutto in locale, modelli open)
 
@@ -202,7 +220,7 @@ AI_MODEL=qwen2.5:14b
 ```
 
 **In aula, con più gruppi.** Su un Mac M3 con 24 GB e `qwen2.5:14b` la prima parola arriva dopo circa 5–20 secondi
-(il primo messaggio di un capitolo è il più lento) e una risposta completa dopo circa 30–45 secondi. Ollama risponde a un gruppo alla volta:
+(il primo messaggio di un capitolo è il più lento) e una risposta completa dopo circa 20–30 secondi. Ollama risponde a un gruppo alla volta:
 con 6 gruppi che chiedono insieme, l'ultimo aspetta. Per migliorare:
 
 ```bash
@@ -216,7 +234,7 @@ oppure Ollama (o vLLM) su un server con GPU: basta cambiare `AI_BASE_URL`.
 | --- | --- | --- |
 | `SOCRATICO` | `on` | `off` nasconde la guida |
 | `SOCRATICO_MODEL` | `AI_MODEL` | Modello usato dalla guida |
-| `SOCRATICO_TEMPERATURE` | `0.5` | Creatività delle domande |
+| `SOCRATICO_TEMPERATURE` | `0.3` | Variabilità delle risposte |
 | `SOCRATICO_MAX_TOKENS` | `450` | Lunghezza massima di una risposta |
 | `SOCRATICO_CTX` | `4096` | Contesto del modello in token. I turni vecchi vengono scartati per restarci dentro, le regole mai |
 | `BOZZE_AI` | `on` | `off` spegne «Bozza con AI» su personas e storie |
@@ -259,7 +277,7 @@ server/
   pdf.js       compilazione del PDF con latexmk (coda e cache)
   zip.js       archivio zip minimo per il progetto Overleaf
   ai.js        bozza con AI (endpoint compatibile OpenAI)
-  socratico.js guida socratica: regole, contesto, streaming dal modello
+  socratico.js guida socratica: regole, intenti, contesto, filtri, streaming dal modello
 public/
   index.html, css/style.css
   js/model.js     modello dati, etichette, completamento, verifica del piano (condiviso con il server)
@@ -268,6 +286,7 @@ public/
   js/ui.js        helper DOM e campi legati al documento
   js/sections.js  i capitoli 1–11
   js/pages.js     Task Force, Verifica, Lavagna, Registro, Esporta
+  js/guida.js     schede dei campi, glossario del corso, percorso guidato (condiviso con il server)
   js/socratico.js pannello della guida socratica
   js/app.js       router, barra in alto, menu, login, eventi
 scripts/seed.js   Task Force di esempio (scripts/esempi/ per l'esempio completo)
@@ -289,7 +308,7 @@ test/             node:test (merge patch, export Markdown e LaTeX/PDF, API, bozz
 | `GET` | `/api/agents` | registro di tutti gli agenti |
 | `GET` | `/api/export/:id.{md,tex,zip,pdf}` · `/api/export/book.{md,tex,zip,pdf}` | `?download` per l'allegato; libro solo docente |
 | `POST` | `/api/ai/draft` | `{groupId, kind: persona \| story, personaId?}` |
-| `POST` | `/api/socratico` | `{groupId, section, field: {path, label}, messages}` → testo in streaming |
+| `POST` | `/api/socratico` | `{groupId, section, intent: guida \| parere \| domanda \| libero, field: {path, label}, messages}` → testo in streaming |
 
 Il codice si passa nell'header `X-Codice-Corso` (o `X-Codice-Docente`) oppure nella query `?codice=` / `?docente=`.
 
