@@ -80,7 +80,7 @@ export async function draft({ doc, kind, persona }, env = process.env) {
     method: 'POST',
     headers,
     body: JSON.stringify({ model: env.AI_MODEL, messages, temperature: 0.7, response_format: { type: 'json_object' } }),
-    signal: AbortSignal.timeout(Number(env.AI_TIMEOUT_MS) || 90_000),
+    signal: AbortSignal.timeout(Number(env.AI_TIMEOUT_MS) || 180_000),
   });
   if (!res.ok) throw new Error(`Il servizio AI ha risposto ${res.status}`);
   const body = await res.json();

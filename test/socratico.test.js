@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { buildContext, buildMessages, thinkFilter, relevantConcepts, quoteGuard, sentenceGuard, SYSTEM_PROMPT } from '../server/socratico.js';
+import { buildContext, buildMessages, thinkFilter, relevantConcepts, quoteGuard, sentenceGuard, refusal, isPressure, SYSTEM_PROMPT } from '../server/socratico.js';
 import { guideSteps, fieldGuide } from '../public/js/guida.js';
 import { createApp } from '../server/app.js';
 import { exampleDoc } from '../scripts/seed.js';
@@ -109,6 +109,51 @@ test('quoteGuard: una virgoletta senza chiusura non blocca il testo', () => {
   const g = quoteGuard();
   const out = g('Il pollice " è un simbolo.\n\nSecondo paragrafo') + g.flush();
   assert.equal(out, 'Il pollice " è un simbolo.\n\nSecondo paragrafo');
+});
+
+test('sentenceGuard: una frase che consegna la soluzione viene sostituita da un rifiuto con un appiglio', () => {
+  const field = { path: 'scenario.obiettivo', label: 'Obiettivo e misura di successo' };
+  const g = sentenceGuard({ onSolution: () => refusal(field) });
+  let out = '';
+  for (const p of ['Capisco la fretta. Ecco il testo per il campo "Obiettivo": ', 'Ridurre del 50% le email. Altro.']) { out += g.push(p); if (g.done) break; }
+  out += g.flush();
+  assert.doesNotMatch(out, /Ridurre del 50%/);
+  assert.match(out, /^Capisco la fretta\. Questa parte la scrivete voi/);
+  assert.match(out, /un buon «Obiettivo e misura di successo» è così: Un cambiamento misurabile/);
+  assert.match(out, /\?$/);
+  for (const t of ['Potreste scrivere: «...».', 'Io scriverei così.', 'Ecco una proposta di obiettivo.']) {
+    const g2 = sentenceGuard({ onSolution: () => 'X' });
+    assert.equal(g2.push(t + ' ') , 'X', t);
+  }
+  const g3 = sentenceGuard();
+  assert.equal(g3.push('Ecco perché conta la misura. ') + g3.flush(), 'Ecco perché conta la misura. ', '«ecco perché» non è una soluzione');
+});
+
+test('richieste di scrivere al posto del gruppo: riconosciute senza falsi allarmi', () => {
+  for (const t of ["Non abbiamo tempo: scrivetecelo voi l'obiettivo", 'scrivicelo tu', 'Fatelo voi per favore', 'compilatelo voi', 'dateci la risposta', 'scrivi tu il prompt', 'potete scriverlo al posto nostro?']) assert.ok(isPressure(t), t);
+  for (const t of ['Cosa dobbiamo scrivere in questo campo?', 'Abbiamo scritto noi questa frase, va bene?', 'Come si scrive un buon criterio?', 'Voi cosa ne pensate?']) assert.ok(!isPressure(t), t);
+});
+
+test('sentenceGuard: etichetta del campo con i due punti e cifre legali inventate', () => {
+  const g = sentenceGuard({ onSolution: () => 'RIFIUTO', fieldLabel: 'Obiettivo e misura di successo' });
+  assert.equal(g.push('Capisco.\nObiettivo e misura di successo: ridurre le email.\n'), 'Capisco.\nRIFIUTO');
+  const g2 = sentenceGuard({ knownText: 'Il corso costa 1.400 euro.' });
+  const out = g2.push('Le multe vanno da pochi euro a migliaia di euro. Possono arrivare a 35 milioni di euro. Il corso costa 1.400 euro. Che fascia è? ');
+  assert.equal(out, 'Sulle cifre e sugli articoli di legge non posso darvi garanzie: chiedete al docente o guardate il testo ufficiale. Il corso costa 1.400 euro. Che fascia è?');
+});
+
+test('POST /api/socratico: «scrivetecelo voi» riceve subito un rifiuto con appiglio, senza chiamare il modello', async () => {
+  const ctx = createApp({ dbFile: ':memory:', courseCode: 'c', teacherCode: 'd', env: { AI_BASE_URL: 'http://127.0.0.1:9/v1', AI_MODEL: 'irraggiungibile' } });
+  const server = ctx.app.listen(0);
+  await new Promise((r) => server.once('listening', r));
+  const g = ctx.store.createGroup({ name: 'X' });
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/api/socratico`, {
+    method: 'POST', headers: { 'X-Codice-Corso': 'c', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ groupId: g.id, field: { path: 'scenario.problema', label: 'Problema' }, messages: [{ role: 'user', content: 'scrivetecelo voi' }] }),
+  });
+  assert.equal(res.status, 200, 'il modello irraggiungibile non viene nemmeno chiamato');
+  assert.match(await res.text(), /^Questa parte la scrivete voi[^]*un buon «Problema» è così: Quanto spesso succede/);
+  server.close(); ctx.close();
 });
 
 test('thinkFilter toglie i blocchi <think> anche spezzati tra più pezzi', () => {

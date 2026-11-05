@@ -4,3 +4,4 @@ data
 .git
 *.log
 .DS_Store
+ollama

@@ -176,7 +176,10 @@ export function createApp({ dbFile, courseCode, teacherCode, env = process.env }
       res.end();
     } catch (e) {
       if (abort.signal.aborted) return;
-      if (!res.headersSent) res.status(502).json({ error: 'La guida non risponde: ' + e.message });
+      const code = e.cause?.code || e.code;
+      const why = ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT'].includes(code)
+        ? 'il servizio del modello non è raggiungibile (è avviato? AI_BASE_URL è giusto?)' : e.message;
+      if (!res.headersSent) res.status(502).json({ error: 'La guida non risponde: ' + why });
       else res.end('\n\n[La risposta si è interrotta: ' + e.message + ']');
     }
   });
