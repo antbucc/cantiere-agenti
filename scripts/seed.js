@@ -1,10 +1,13 @@
-// npm run seed — crea (o rigenera) la Task Force di esempio "Esempio · Onboarding",
-// da mostrare in aula come capitolo modello. Non tocca le altre Task Force.
+// npm run seed — crea (o rigenera) le Task Force di esempio da mostrare in aula.
+// Non tocca le altre Task Force.
+//
+//   Esempio · Onboarding    a metà (3 test, checklist parziale): mostra avvisi e lacune
+//   Esempio · Orientamento  completo al 100%: il modello di una parte finita del libro
 
 import 'dotenv/config';
 import { openDb, defaultDbFile } from '../server/db.js';
+import { orientamentoDoc, orientamentoBoard } from './esempi/orientamento.js';
 
-const NAME = 'Esempio · Onboarding';
 const DB_FILE = defaultDbFile();
 const at = (d) => new Date(d).toISOString();
 
@@ -104,22 +107,34 @@ export const exampleDoc = {
   },
 };
 
+/** Gli esempi, nell'ordine in cui vengono creati. */
+export const EXAMPLES = [
+  { id: 'esempio-onboarding', name: 'Esempio · Onboarding', data: exampleDoc,
+    board: { punti: { tappe: 40, quiz: 12, revisione: 8, consiglio: 5 }, badges: ['Guardiano'] } },
+  { id: 'esempio-orientamento', name: 'Esempio · Orientamento', data: orientamentoDoc, board: orientamentoBoard },
+];
+
 /**
- * Crea (o rigenera) la Task Force di esempio.
+ * Crea (o rigenera) le Task Force di esempio.
  * Con onlyIfEmpty: true non fa nulla se c'è già almeno una Task Force.
+ * Restituisce l'elenco dei gruppi creati.
  */
 export function seed(dbFile = DB_FILE, { onlyIfEmpty = false } = {}) {
   const store = openDb(dbFile);
-  if (onlyIfEmpty && store.listGroups().length) { store.db.close(); return null; }
-  const existing = store.getGroupByName(NAME);
-  if (existing) store.deleteGroup(existing.id);
-  const g = store.createGroup({ name: NAME, data: exampleDoc, id: 'esempio-onboarding' });
-  store.setBoard(g.id, { punti: { tappe: 40, quiz: 12, revisione: 8, consiglio: 5 }, badges: ['Guardiano'] });
-  store.db.close();
-  return g;
+  try {
+    if (onlyIfEmpty && store.listGroups().length) return [];
+    return EXAMPLES.map((ex) => {
+      for (const old of [store.getGroupByName(ex.name), store.getGroup(ex.id)]) if (old) store.deleteGroup(old.id);
+      const g = store.createGroup({ name: ex.name, data: ex.data, id: ex.id });
+      store.setBoard(g.id, ex.board);
+      return g;
+    });
+  } finally {
+    store.db.close();
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const g = seed();
-  console.log(`✓ Creata la Task Force "${g.name}" (id ${g.id}) in ${DB_FILE}`);
+  for (const g of seed()) console.log(`✓ Creata la Task Force "${g.name}" (id ${g.id})`);
+  console.log(`  in ${DB_FILE}`);
 }

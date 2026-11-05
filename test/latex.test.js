@@ -85,10 +85,11 @@ test('zip valido (verificato con unzip, se presente)', (t) => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('il libro di esempio compila in PDF', { skip: !pdfAvailable() && 'LaTeX non installato', timeout: 240000 }, async () => {
-  const pdf = await compilePdf(bookProject([esempio]));
+test('il libro con i due esempi compila in PDF', { skip: !pdfAvailable() && 'LaTeX non installato', timeout: 240000 }, async () => {
+  const { EXAMPLES } = await import('../scripts/seed.js');
+  const pdf = await compilePdf(bookProject(EXAMPLES.map(({ id, name, data }) => ({ id, name, data }))));
   assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
-  assert.ok(pdf.length > 50000);
+  assert.ok(pdf.length > 100000);
   const single = await compilePdf(groupProject(esempio));
   assert.equal(single.subarray(0, 5).toString(), '%PDF-');
 });

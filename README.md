@@ -233,12 +233,19 @@ del gruppo d'origine non la cambiano. La copia parte senza versioni congelate e 
 finché il campo è vuoto il capitolo non arriva al 100%. Il gruppo d'origine vede in tempo reale «★ Riusato da N Task Force»
 (utile anche per assegnare il badge *Mentore*). Origine, adattamento e «riusato da» compaiono nell'export e nel registro del libro.
 
-## Il capitolo di esempio
+## Gli esempi da mostrare in aula
 
-`npm run seed` crea (o rigenera) la Task Force **Esempio · Onboarding**: uno studio professionale che inserisce nuovi assunti,
-con tre agenti (Smistatore, Risponditore su procedure socratico, Registratore), un workflow a router con un passo umano
-«informato», 3 test e una checklist etica compilata a metà. Usatelo per mostrare in aula com'è fatto un capitolo.
-Lanciatelo a server fermo, oppure ricaricate la pagina dopo.
+`npm run seed` crea (o rigenera) due Task Force di esempio e non tocca le altre:
+
+| Esempio | Stato | Cosa mostra |
+| --- | --- | --- |
+| **Esempio · Orientamento**, «Lo sportello che fa domande» (Formazione e scuola) | **Completo**: 11 capitoli al 100% | Sportello informazioni e orientamento di un centro di formazione. Workflow *combinazione* (router + produttore e critico) con due passi umani (*approva*, *decide*); un agente socratico (l'Orientatore); un agente **riusato** dallo Smistatore dell'Onboarding, con cosa è stato adattato; prompt con 1–3 versioni legate ai test; 12 test (9 passati, 2 parziali, 1 fallito, tutti poi corretti); fascia AI Act discussa al confine con l'alto rischio; persona «toccata ma non utente» nata da una bozza AI riscritta |
+| **Esempio · Onboarding**, «Il primo mese senza panico» (Amministrazione e servizi) | **A metà**: 3 test, checklist etica parziale | Come appaiono avvisi, lacune e la Verifica finale di un lavoro in corso |
+
+Suggerimento per la lezione: mostrate prima l'Orientamento dalla **Verifica finale** e dall'export **PDF** («ecco dove arriverete»),
+poi l'Onboarding per far vedere cosa segnala l'app quando manca qualcosa.
+
+Su Railway, con `SEED_ESEMPIO=1` gli esempi vengono creati al primo avvio, solo se il database è vuoto.
 
 ## Struttura
 
@@ -263,7 +270,7 @@ public/
   js/pages.js     Task Force, Verifica, Lavagna, Registro, Esporta
   js/socratico.js pannello della guida socratica
   js/app.js       router, barra in alto, menu, login, eventi
-scripts/seed.js   Task Force di esempio
+scripts/seed.js   Task Force di esempio (scripts/esempi/ per l'esempio completo)
 scripts/check-latex.js  verifica di LaTeX nel build Docker
 Dockerfile, railway.json  deploy su Railway
 test/             node:test (merge patch, export Markdown e LaTeX/PDF, API, bozza AI, riuso, guida socratica)

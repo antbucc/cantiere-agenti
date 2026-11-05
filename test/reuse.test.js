@@ -36,3 +36,20 @@ test("l'export mostra origine, adattamento e 'riusato da' nel registro", () => {
   const book = bookToMarkdown([source, g2]);
   assert.match(book, /\| Risponditore su procedure \| .* \| Esempio · Onboarding \| Medio \| sì \| .* \| — \| Le Sentinelle \|$/m);
 });
+
+test("l'esempio Orientamento è completo al 100% e riusa lo Smistatore dell'Onboarding", async () => {
+  const { completion, planCheck, items } = await import('../public/js/model.js');
+  const { EXAMPLES } = await import('../scripts/seed.js');
+  const ori = EXAMPLES.find((e) => e.id === 'esempio-orientamento');
+  const c = completion(ori.data);
+  for (const [key, st] of Object.entries(c.sections)) {
+    assert.equal(st.pct, 100, `${key}: ${st.pct}% — ${st.warnings.join(' ')}`);
+    assert.deepEqual(st.warnings, [], key);
+  }
+  assert.ok(planCheck(ori.data).ok);
+  const acc = items(ori.data.agents).find((a) => a.nome === 'Accoglienza');
+  assert.deepEqual([acc.origine.groupId, acc.origine.agentId], ['esempio-onboarding', 'a_smist']);
+  const onboarding = EXAMPLES.find((e) => e.id === 'esempio-onboarding');
+  assert.ok(onboarding.data.agents[acc.origine.agentId], "l'agente d'origine esiste nell'altro esempio");
+  assert.deepEqual(reusers(EXAMPLES, 'a_smist'), ['Esempio · Orientamento']);
+});
