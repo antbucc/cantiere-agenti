@@ -138,7 +138,7 @@ store.subscribe(({ source }) => {
 
 async function askCourseCode(message) {
   for (;;) {
-    const res = await dialog({ title: 'Dify', body: message || 'Inserite il codice del corso che trovate alla lavagna.',
+    const res = await dialog({ title: 'AIM-PRO Lab', body: message || 'Inserite il codice del corso che trovate alla lavagna.',
       fields: [{ key: 'codice', label: 'Codice del corso', type: 'password', required: true }], ok: 'Entra', cancel: null });
     try {
       const { ruolo } = await api.login(res.codice.trim());

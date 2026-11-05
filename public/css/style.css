@@ -1,4 +1,4 @@
-/* Dify
+/* AIM-PRO Lab
    Palette: #505DBC principale · #97EFD8 secondaria · #FFC000 venerdì · #E26D5A avvisi · #F3F3F1 sfondo */
 
 :root {
@@ -402,6 +402,7 @@ body.offline .offline-banner { display: block; }
 }
 @media (max-width: 560px) {
   .topbar { gap: 8px; padding: 0 10px; }
+  .brand-name { display: none; } /* sui telefoni resta il logo: il nome non ci sta accanto ai link */
   .tf-chip { max-width: 110px; }
   .top-actions a { padding: 6px 7px; font-size: 0.8rem; }
   h1 { font-size: 1.3rem; }

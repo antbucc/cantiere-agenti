@@ -1,4 +1,6 @@
-# Dify
+# AIM-PRO Lab
+
+Strumento del progetto europeo AIM-PRO (*AI Literacy for Multidisciplinary Professional Readiness and Outreach*).
 
 Strumento di lavoro per le Task Force del corso di due giornate su AI literacy e agenti AI.
 Ogni gruppo compila, capitolo per capitolo, la propria parte di un libro collettivo di casi d'uso;

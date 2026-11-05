@@ -279,7 +279,7 @@ export function esporta(rerender) {
     g ? h('div', { class: 'card' },
       h('h2', {}, 'La vostra parte del libro'),
       h('p', { class: 'small muted' }, `«${g.data.titolo || g.name}»: gli 11 capitoli della Task Force ${g.name}.`),
-      exportBlock(base, `parte-${fileSlug(g.name)}`, `Dify - ${g.name}`, 'Testo'))
+      exportBlock(base, `parte-${fileSlug(g.name)}`, `AIM-PRO Lab - ${g.name}`, 'Testo'))
       : h('p', { class: 'empty' }, 'Scegliete prima una Task Force.'),
     h('div', { class: 'card teacher' },
       h('h2', {}, 'Libro intero'),
