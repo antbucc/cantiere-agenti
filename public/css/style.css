@@ -1,12 +1,12 @@
 /* AIM-PRO Lab
-   Palette: #505DBC principale · #97EFD8 secondaria · #FFC000 venerdì · #E26D5A avvisi · #F3F3F1 sfondo */
+   Palette AIM-PRO: #5F56A5 principale · #A3D9CC secondaria · #FFC000 venerdì · #E26D5A avvisi · #F3F3F1 sfondo */
 
 :root {
-  --primary: #505DBC;
+  --primary: #5F56A5;
   --primary-ink: #ffffff;
-  --primary-soft: #e6e8f6;
-  --mint: #97EFD8;
-  --mint-ink: #0f5a47;
+  --primary-soft: #ebe9f5;
+  --mint: #A3D9CC;
+  --mint-ink: #1d5c4e;
   --yellow: #FFC000;
   --yellow-soft: #fff4cc;
   --red: #E26D5A;
@@ -18,7 +18,7 @@
   --ink: #23243a;
   --muted: #6b6d80;
   --line: #e1e1dc;
-  --focus: #505DBC66;
+  --focus: #5F56A566;
   --shadow: 0 1px 2px #0000000d, 0 4px 14px #0000000a;
   --radius: 12px;
   --font: 'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -30,10 +30,10 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --primary: #8792e6;
+    --primary: #a39ce3;
     --primary-ink: #12142a;
-    --primary-soft: #2a2e52;
-    --mint-ink: #97EFD8;
+    --primary-soft: #2e2a4f;
+    --mint-ink: #A3D9CC;
     --yellow-soft: #3d3418;
     --red-soft: #452824;
     --green: #5fd3a0;
@@ -43,7 +43,7 @@
     --ink: #ecedf3;
     --muted: #a0a2b3;
     --line: #33364a;
-    --focus: #8792e688;
+    --focus: #a39ce388;
     --shadow: 0 1px 2px #0000004d, 0 6px 18px #00000033;
     color-scheme: dark;
   }
@@ -78,7 +78,7 @@ a { color: var(--primary); }
   background: var(--primary);
   color: #fff;
 }
-@media (prefers-color-scheme: dark) { .topbar { background: #2f3570; } }
+@media (prefers-color-scheme: dark) { .topbar { background: #352f66; } }
 .brand { display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; font-family: var(--mono); font-weight: 700; white-space: nowrap; }
 .brand-mark { width: 22px; height: 22px; border-radius: 6px; background: var(--yellow); box-shadow: inset 0 -6px 0 #0002; }
 .brand .dot { color: var(--yellow); }
@@ -137,6 +137,7 @@ main { padding: 28px clamp(16px, 4vw, 48px) 80px; max-width: 1100px; width: 100%
 .nav-num { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; font-size: 0.78rem; font-weight: 700; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); }
 .nav-item.on .nav-num { background: var(--primary); color: var(--primary-ink); border-color: var(--primary); }
 .nav-item.done .nav-num { color: var(--green); border-color: var(--green); }
+.nav-item.on.done .nav-num { color: var(--primary-ink); border-color: var(--primary); } /* capitolo aperto e completo: numero leggibile sul viola */
 .nav-item.verify .nav-num { border: 0; background: transparent; }
 .nav-title { font-weight: 500; font-size: 0.92rem; }
 .nav-pct { font-size: 0.75rem; color: var(--muted); }
@@ -422,7 +423,7 @@ body.offline .offline-banner { display: block; }
   padding: 8px 18px 8px 8px; border: 0; border-radius: 99px; cursor: pointer;
   background: var(--primary); color: var(--primary-ink);
   font: 600 0.9rem var(--font);
-  box-shadow: 0 6px 24px #505dbc55, 0 2px 6px #0003;
+  box-shadow: 0 6px 24px #5f56a555, 0 2px 6px #0003;
   transition: transform .15s;
 }
 .soc-fab:hover { transform: translateY(-2px); }

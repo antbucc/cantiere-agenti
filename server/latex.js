@@ -307,9 +307,9 @@ export const PREAMBLE = String.raw`% Preambolo del libro "Agenti al Lavoro" — 
 \usepackage{titlesec}
 \usepackage[hidelinks,bookmarksnumbered]{hyperref}
 
-% Palette di AIM-PRO Lab
-\definecolor{primario}{HTML}{505DBC}
-\definecolor{secondario}{HTML}{97EFD8}
+% Palette di AIM-PRO
+\definecolor{primario}{HTML}{5F56A5}
+\definecolor{secondario}{HTML}{A3D9CC}
 \definecolor{giallo}{HTML}{FFC000}
 \definecolor{rosso}{HTML}{E26D5A}
 \definecolor{verde}{HTML}{2F9E6F}
