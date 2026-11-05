@@ -10,7 +10,9 @@
 // id, capitolo, campo su cui si lavora e intento.
 
 import { SECTIONS, PERSONA_TIPI, items, sectionStatus, filled } from '../public/js/model.js';
-import { fieldGuide, findConcepts, guideSteps, GLOSSARIO } from '../public/js/guida.js';
+import { fieldGuide, findConcepts, guideSteps, GLOSSARIO, isPressure, refusal } from '../public/js/guida.js';
+
+export { isPressure, refusal }; // usati anche dai test
 
 const MAX_MSG = 2000; // caratteri per messaggio
 const MAX_STRING = 300; // ogni testo del capitolo mostrato nel contesto
@@ -340,22 +342,10 @@ const LABEL_WORDS = [[/\bSCHEDA DEL CAMPO\b/g, 'descrizione del campo'], [/\bGLO
 /** Frasi che consegnano una soluzione invece di guidare. */
 const SOLUTION = /\b(?:ecco\s+(?:a voi\s+)?(?:il|lo|un|una|la|le|i|l['’])\s*(?:testo|proposta|versione|bozza|formulazione|obiettivo|campo|risposta|frase|esempio per (?:il )?vostro)|ecco come (?:potreste|potete|lo|la) scriver|(?:potreste|potete|dovreste) scrivere\s*:|scrivete così|io (?:lo |la )?scriverei|vi propongo\b|propongo (?:questo|questa|il seguente|la seguente|l['’])|una possibile (?:formulazione|versione|risposta) (?:è|potrebbe essere)|potrebbe essere formulat)/i;
 
-/** Il gruppo chiede di scrivere al posto suo: "scrivetecelo voi", "fatelo voi", "compilalo tu"… */
-const PRESSURE = /\b(?:scriv\w*cel[oa]|scriv\w*mel[oa]|fatecel[oa]|facc\w*cel[oa]|compil\w*cel[oa]|(?:scrivi|scrivete|compila|compilate|fai|fate|riempi|riempite)(?:l[oaie])?\s+(?:tu|voi)\b|(?:scrivi|scrivete|compila|compilate|riempi|riempite)\s+(?:tu|voi|per noi|al posto nostro)|(?:dacci|dateci|dammi|datemi|dicci|diteci)\s+(?:la|il)\s+(?:risposta|soluzione|testo)|al posto nostro)\b/i;
-export const isPressure = (text) => PRESSURE.test(String(text || ''));
-
 /** Cifre su multe, sanzioni, leggi: affermazioni che un modello piccolo spesso inventa. */
 const LEGAL_MONEY = /\b(?:multa|multe|sanzion\w*|ammend\w*|articol[oi]|art\.|euro|€|milion\w*|miliard\w*|fatturato)\b|€/i;
 const QUANTITY = /\d|\b(?:pochi|centinaia|migliaia|milion\w*|miliard\w*)\b/i;
 const numbersIn = (t) => (String(t).match(/\d+(?:[.,]\d+)*/g) || []).map((n) => n.replace(/[.,]/g, ''));
-
-/** Risposta sostitutiva quando il modello stava per scrivere al posto del gruppo. */
-export function refusal(field) {
-  const g = field?.path ? fieldGuide(field.path) : null;
-  return g
-    ? `Questa parte la scrivete voi, con le vostre parole: è il vostro lavoro. Vi do un appiglio: un buon «${field.label}» è così: ${g.buona.replace(/\.$/, '')}. Rileggendo il vostro caso, da cosa partireste?`
-    : 'Questa parte la scrivete voi, con le vostre parole: è il vostro lavoro. Posso spiegarvi un concetto o farvi una domanda per partire: da cosa volete cominciare?';
-}
 
 /**
  * Filtro per frasi: ripulisce le etichette interne e chiude la risposta alla

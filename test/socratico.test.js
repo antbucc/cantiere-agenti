@@ -156,6 +156,42 @@ test('POST /api/socratico: «scrivetecelo voi» riceve subito un rifiuto con app
   server.close(); ctx.close();
 });
 
+test('modalità di base: scheda, glossario e una domanda, mai il contenuto del campo', async () => {
+  const { offlineReply } = await import('../public/js/guida.js');
+  const f = { path: 'analisi.out2.caso', label: 'Output 2 · un fallimento · Il caso' };
+  const guida = offlineReply({ text: `Lavoriamo su «${f.label}». Da dove partiamo?`, intent: 'guida', field: f });
+  assert.match(guida, /^Il campo «Output 2 · un fallimento · Il caso» serve a questo: L'output che analizzate\./);
+  assert.doesNotMatch(guida, /\*\*Effetti\*\*/, "l'etichetta del campo non attiva il glossario");
+  assert.match(guida, /\?$/);
+  const domanda = offlineReply({ text: "Cos'è un test di equità?", intent: 'libero' });
+  assert.match(domanda, /^\*\*Tipi di test\*\*: /);
+  assert.match(domanda, /Come si applica questo al vostro caso\?$/);
+  assert.match(offlineReply({ text: 'scrivetecelo voi', field: f }), /^Questa parte la scrivete voi/);
+  assert.match(offlineReply({ text: 'boh' }), /parola chiave/);
+});
+
+test('modello irraggiungibile: il messaggio spiega che il servizio non risponde', async () => {
+  // una porta appena liberata rifiuta la connessione, come un Ollama non ancora avviato
+  const tmp = http.createServer().listen(0);
+  await new Promise((r) => tmp.once('listening', r));
+  const closedPort = tmp.address().port;
+  await new Promise((r) => tmp.close(r));
+  const ctx = createApp({ dbFile: ':memory:', courseCode: 'c', teacherCode: 'd', env: { AI_BASE_URL: `http://127.0.0.1:${closedPort}/v1`, AI_MODEL: 'x' } });
+  const server = ctx.app.listen(0);
+  await new Promise((r) => server.once('listening', r));
+  try {
+    const g = ctx.store.createGroup({ name: 'X' });
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/socratico`, {
+      method: 'POST', headers: { 'X-Codice-Corso': 'c', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ groupId: g.id, messages: [{ role: 'user', content: 'ciao' }] }),
+    });
+    assert.equal(res.status, 502);
+    assert.match((await res.json()).error, /il servizio del modello non è raggiungibile/);
+  } finally {
+    server.close(); ctx.close();
+  }
+});
+
 test('thinkFilter toglie i blocchi <think> anche spezzati tra più pezzi', () => {
   const f = thinkFilter();
   const out = ['Pri', 'ma <th', 'ink>ragionamento', ' segreto</thi', 'nk>Domanda: perché', '?'].map(f).join('');
@@ -185,7 +221,7 @@ test('POST /api/socratico inoltra il contesto e restituisce lo streaming', async
   const H = { 'X-Codice-Corso': 'c', 'Content-Type': 'application/json' };
   try {
     const cfg = await (await fetch(base + '/config', { headers: H })).json();
-    assert.deepEqual(cfg.socratico, { model: 'finto-open' });
+    assert.deepEqual(cfg.socratico, { attivo: true, model: 'finto-open' });
     const g = ctx.store.createGroup({ name: 'Esempio', data: exampleDoc });
     const res = await fetch(base + '/socratico', {
       method: 'POST', headers: H,

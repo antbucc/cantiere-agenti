@@ -205,6 +205,11 @@ curl -H "X-Codice-Corso: IL_CODICE" http://localhost:3000/api/export/esempio-onb
 In basso a destra c'è il pulsante **? Guida socratica**. Il numero accanto dice quanti passi mancano nel capitolo aperto.
 La guida accompagna la Task Force **capitolo per capitolo e campo per campo**.
 
+**Il pulsante c'è sempre**, anche senza un modello collegato. In quel caso la guida lavora in **modalità di base**
+(etichetta gialla nel pannello): percorso guidato, schede dei campi, definizioni dal glossario, rifiuto con appiglio se le si
+chiede di scrivere al posto del gruppo, e sempre una domanda per far ragionare. La stessa risposta di base arriva, con un avviso,
+se il modello è configurato ma non risponde (per esempio mentre il servizio Ollama sta ancora scaricando il modello).
+
 **Il percorso guidato** (in cima al pannello) mostra sempre il *prossimo passo* del capitolo, nell'ordine giusto:
 - prima le **azioni** che creano la struttura (es. «manca una persona toccata ma non utente», «congelate la prima versione del prompt»);
 - poi i **campi** da compilare, ognuno con la sua scheda: *a cosa serve* e *quando è buono*.

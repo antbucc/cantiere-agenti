@@ -148,7 +148,7 @@ export function fieldGuide(path) {
 export const GLOSSARIO = [
   { id: 'agente', termine: 'Agente AI', sinonimi: ['agente', 'agenti'], definizione: "Un sistema che usa un modello linguistico per svolgere un compito preciso: riceve un input, segue istruzioni (il prompt), può usare strumenti e produce un output. In un workflow ogni agente ha un solo ruolo.", esempio: "In una biblioteca, un agente legge la richiesta di un lettore e restituisce tre titoli dal catalogo." },
   { id: 'precond', termine: 'Precondizioni', sinonimi: ['precondizione', 'precondizioni', 'prerequisit'], definizione: "Ciò che deve essere vero prima che un agente possa partire: gli input, i dati, le approvazioni necessarie. Nel workflow devono essere coperte dall'input iniziale o dagli effetti di un passo precedente.", esempio: "Un agente che prepara il preventivo di un'officina ha come precondizione «la diagnosi del guasto è stata fatta»." },
-  { id: 'effetti', termine: 'Effetti', sinonimi: ['effetto', 'effetti', 'output'], definizione: "Ciò che è vero dopo il lavoro di un agente: l'output prodotto, in quale formato e per chi. Gli effetti di un passo diventano le precondizioni del passo successivo.", esempio: "L'effetto dell'agente diagnostico in officina è «c'è un elenco dei guasti con una stima dei tempi»." },
+  { id: 'effetti', termine: 'Effetti', sinonimi: ['effetto', 'effetti'], definizione: "Ciò che è vero dopo il lavoro di un agente: l'output prodotto, in quale formato e per chi. Gli effetti di un passo diventano le precondizioni del passo successivo.", esempio: "L'effetto dell'agente diagnostico in officina è «c'è un elenco dei guasti con una stima dei tempi»." },
   { id: 'story', termine: 'User story', sinonimi: ['user story', 'storia', 'storie', 'come voglio per'], definizione: "Un bisogno descritto dal punto di vista di una persona, con la formula «Come [persona] voglio [azione] per [beneficio]». Il «per» dice perché conta, ed è ciò che permette di valutarla.", esempio: "«Come socio della palestra voglio prenotare la lezione dal telefono per non fare la fila alla reception.»" },
   { id: 'accettazione', termine: 'Criterio di accettazione', sinonimi: ['accettazione', 'dato quando allora', 'dato', 'quando', 'allora', 'criterio'], definizione: "Il modo per verificare che una user story sia soddisfatta, nella forma «dato [situazione], quando [evento], allora [risultato osservabile]». Deve poter diventare un test: qualcuno deve poter dire sì o no.", esempio: "«Dato che la lezione ha posti liberi, quando il socio prenota, allora riceve una conferma e il posto risulta occupato.»" },
   { id: 'negativa', termine: 'Storia negativa', sinonimi: ['negativa', 'negativo', 'non deve'], definizione: "Una user story che dice cosa il sistema NON deve fare. Serve a fissare limiti e responsabilità, per esempio che il sistema non decida al posto di una persona.", esempio: "«Come socio non voglio che il sistema mi proponga un piano di allenamento senza parlare con un istruttore, per non farmi male.»" },
@@ -302,4 +302,46 @@ const STEPS = {
 /** Cosa manca in un capitolo, nell'ordine in cui conviene farlo. */
 export function guideSteps(doc, chapter) {
   return STEPS[chapter] ? STEPS[chapter](doc || {}) : [];
+}
+
+// ---------------------------------------------------------------------------
+// Risposte che non hanno bisogno del modello
+// ---------------------------------------------------------------------------
+
+/** Il gruppo chiede di scrivere al posto suo: "scrivetecelo voi", "fatelo voi", "compilalo tu"… */
+const PRESSURE = /\b(?:scriv\w*cel[oa]|scriv\w*mel[oa]|fatecel[oa]|facc\w*cel[oa]|compil\w*cel[oa]|(?:scrivi|scrivete|compila|compilate|fai|fate|riempi|riempite)(?:l[oaie])?\s+(?:tu|voi)\b|(?:scrivi|scrivete|compila|compilate|riempi|riempite)\s+(?:tu|voi|per noi|al posto nostro)|(?:dacci|dateci|dammi|datemi|dicci|diteci)\s+(?:la|il)\s+(?:risposta|soluzione|testo)|al posto nostro)\b/i;
+export const isPressure = (text) => PRESSURE.test(String(text || ''));
+
+/** Risposta sostitutiva quando il modello stava per scrivere al posto del gruppo. */
+export function refusal(field) {
+  const g = field?.path ? fieldGuide(field.path) : null;
+  return g
+    ? `Questa parte la scrivete voi, con le vostre parole: è il vostro lavoro. Vi do un appiglio: un buon «${field.label}» è così: ${g.buona.replace(/\.$/, '')}. Rileggendo il vostro caso, da cosa partireste?`
+    : 'Questa parte la scrivete voi, con le vostre parole: è il vostro lavoro. Posso spiegarvi un concetto o farvi una domanda per partire: da cosa volete cominciare?';
+}
+
+/**
+ * Risposta della guida quando il modello non è collegato (o non risponde):
+ * scheda del campo, definizioni del glossario e una domanda per far ragionare.
+ * Non scrive mai il contenuto dei campi, come la guida con il modello.
+ */
+export function offlineReply({ text = '', intent = 'libero', field = null, filledNow = false } = {}) {
+  if (isPressure(text)) return refusal(field);
+  const parts = [];
+  const g = field?.path ? fieldGuide(field.path) : null;
+  // il glossario si usa sulle domande scritte dal gruppo, non sui messaggi d'avvio con l'etichetta del campo
+  const concepts = intent === 'guida' || intent === 'parere' ? [] : findConcepts(text, 2);
+  for (const c of concepts) parts.push(`**${c.termine}**: ${c.definizione} Per esempio: ${c.esempio}`);
+  if (g && (intent !== 'domanda' || !concepts.length)) {
+    parts.push(`Il campo «${field.label}» serve a questo: ${g.cosa}${g.domanda ? ` La domanda della checklist è: ${g.domanda}` : ''} È buono se: ${g.buona}`);
+  }
+  let q;
+  if (intent === 'parere' && g) q = filledNow ? 'Rileggete quello che avete scritto con questo criterio in mente: cosa manca, o cosa togliereste, per arrivarci?' : 'Il campo è ancora vuoto: da quale fatto concreto del vostro caso partireste?';
+  else if (g && !filledNow) q = 'Pensando al vostro caso, da quale fatto concreto partireste?';
+  else if (g) q = 'Il vostro testo rispetta già questo criterio, o c\'è un punto da rendere più preciso?';
+  else if (concepts.length) q = 'Come si applica questo al vostro caso?';
+  if (!parts.length) {
+    return "Senza il modello collegato rispondo con il glossario del corso e con le schede dei campi. Provate con una parola chiave, per esempio «precondizioni», «criterio di accettazione», «router» o «AI Act», oppure usate «Ragioniamoci insieme» sul prossimo passo: su quale concetto volete partire?";
+  }
+  return [...parts, q].filter(Boolean).join('\n\n');
 }

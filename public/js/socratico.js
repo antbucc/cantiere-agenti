@@ -17,7 +17,7 @@ import * as store from './store.js';
 import { authHeaders } from './api.js';
 import { h, toast } from './ui.js';
 import { SECTIONS, filled, completion } from './model.js';
-import { guideSteps, fieldGuide } from './guida.js';
+import { guideSteps, fieldGuide, offlineReply, isPressure } from './guida.js';
 
 const K_CHATS = 'cantiere.socratico';
 
@@ -62,6 +62,8 @@ const chatKey = () => `${store.state.activeId}:${currentSection() || 'percorso'}
 const chat = () => (chats[chatKey()] ||= []);
 const stepKey = (s) => s.path || s.label;
 const activeField = () => (lastField && lastField.section === currentSection() ? lastField : null);
+/** Vero se c'è un modello collegato; altrimenti la guida lavora in modalità di base. */
+const llmOn = () => Boolean(store.state.config.socratico?.attivo);
 
 // ---------------------------------------------------------------------------
 // Il percorso guidato
@@ -126,6 +128,12 @@ function renderGuide() {
   updateBadge(all.length);
   const btn = (text, onclick, cls = '') => h('button', { class: `btn ${cls}`, type: 'button', onclick }, text);
 
+  if (!store.state.doc) {
+    guideBox.replaceChildren(h('div', { class: 'soc-step' },
+      h('p', {}, 'Scegliete o create la vostra Task Force: poi vi accompagno capitolo per capitolo.'),
+      h('div', { class: 'soc-actions' }, h('a', { class: 'btn primary small-btn', href: '#/taskforce' }, 'Task Force →'))));
+    return;
+  }
   if (!sec) {
     const nx = store.state.doc ? nextIncomplete(null) : null;
     guideBox.replaceChildren(h('div', { class: 'soc-step' },
@@ -279,7 +287,9 @@ function messageEl(msg) {
   const el = h('div', { class: `soc-msg ${msg.role}${msg.error ? ' error' : ''}` });
   if (msg.role === 'assistant' && !msg.content) el.append(h('span', { class: 'soc-typing', 'aria-label': 'La guida sta pensando' }, h('i'), h('i'), h('i')));
   else el.append(...rich(msg.content));
-  if (msg.role === 'user' && msg.field?.text && msg.field.groupId === store.state.activeId && !msg.starter) {
+  // «↳ Inserisci» solo sotto frasi che possono andare in un campo: non domande, non «scrivetecelo voi»
+  const insertable = !msg.starter && !/\?\s*$/.test(msg.content) && !isPressure(msg.content) && msg.content.trim().split(/\s+/).length >= 3;
+  if (msg.role === 'user' && msg.field?.text && msg.field.groupId === store.state.activeId && insertable) {
     el.append(h('button', { class: 'soc-insert', type: 'button', title: 'Inserisce questa vostra frase nel campo', onclick: () => insertIntoField(msg) },
       `↳ Inserisci in «${msg.field.label}»`));
   }
@@ -292,7 +302,9 @@ function renderMessages() {
   if (!msgs.length) {
     list.replaceChildren(h('div', { class: 'soc-intro' },
       h('p', {}, h('b', {}, 'Vi accompagno campo per campo.'), " Il prossimo passo è qui sopra. Se qualcosa non vi è chiaro chiedete pure: vi spiego i concetti. Le risposte nei campi però le scrivete voi."),
-      h('p', { class: 'small' }, 'Quando una vostra frase vi convince, con «↳ Inserisci» la mettete nel campo.')));
+      h('p', { class: 'small' }, 'Quando una vostra frase vi convince, con «↳ Inserisci» la mettete nel campo.'),
+      llmOn() ? null : h('p', { class: 'soc-offline' }, h('b', {}, 'Modalità di base. '),
+        "Il modello della guida non è collegato: vi accompagno con il percorso, le schede dei campi e il glossario del corso. Per le risposte libere il docente deve collegare un modello (AI_BASE_URL e AI_MODEL).")));
     return;
   }
   list.replaceChildren(...msgs.map(messageEl));
@@ -348,6 +360,14 @@ async function send(text, intent = 'libero', { noField = false, starter = false 
   renderContext();
   save();
 
+  const local = () => offlineReply({ text: content, intent, field, filledNow: Boolean(field && filled(store.get(field.path))) });
+  if (!llmOn()) {
+    reply.content = local();
+    save();
+    renderMessages();
+    return;
+  }
+
   controller = new AbortController();
   setBusy(true);
   try {
@@ -383,8 +403,8 @@ async function send(text, intent = 'libero', { noField = false, starter = false 
     if (e.name === 'AbortError') {
       reply.content = (reply.content || '') + (reply.content ? ' …' : '(interrotta)');
     } else {
-      reply.content = e.message;
-      reply.error = true;
+      // il modello non risponde (spento, ancora in download…): la guida di base risponde comunque
+      reply.content = `${local()}\n\n*(${e.message.replace(/^La guida non risponde: /, 'Il modello non ha risposto: ')} Intanto vi ho risposto con il glossario e le schede.)*`;
     }
   } finally {
     controller = null;
@@ -459,10 +479,9 @@ export function mount() {
 export function update() {
   if (!fab) return;
   const cfg = store.state.config.socratico;
-  const visible = Boolean(cfg && store.state.doc);
-  fab.hidden = !visible;
-  if (!visible && open) toggle(false);
-  if (cfg) modelChip.textContent = cfg.model;
+  fab.hidden = store.state.config.socratico === undefined; // sempre visibile, anche senza modello
+  modelChip.textContent = cfg?.attivo ? cfg.model : 'modalità di base';
+  modelChip.classList.toggle('off', !cfg?.attivo);
   if (lastField && lastField.section !== currentSection()) lastField = null;
   if (chosenKey && !guideState().all.some((s) => stepKey(s) === chosenKey)) chosenKey = null;
   justDone = justDone && lastField?.section === currentSection() ? justDone : null;

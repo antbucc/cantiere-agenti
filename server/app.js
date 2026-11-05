@@ -72,7 +72,7 @@ export function createApp({ dbFile, courseCode, teacherCode, env = process.env }
 
   api.get('/config', (req, res) => res.json({
     ai: aiEnabled(env),
-    socratico: socraticoEnabled(env) ? { model: socraticoModel(env) } : null,
+    socratico: { attivo: socraticoEnabled(env), model: socraticoEnabled(env) ? socraticoModel(env) : null },
     pdf: pdfAvailable(env),
     settori: SETTORI, badges: BADGES, docente: isTeacher(req),
   }));
@@ -176,8 +176,9 @@ export function createApp({ dbFile, courseCode, teacherCode, env = process.env }
       res.end();
     } catch (e) {
       if (abort.signal.aborted) return;
-      const code = e.cause?.code || e.code;
-      const why = ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT'].includes(code)
+      // con Node 22 l'errore di connessione può essere un AggregateError (IPv4 + IPv6): i codici sono un livello più sotto
+      const codes = [e.code, e.cause?.code, ...(e.cause?.errors || []).map((x) => x.code)].filter(Boolean);
+      const why = codes.some((c) => ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENETUNREACH', 'UND_ERR_CONNECT_TIMEOUT'].includes(c))
         ? 'il servizio del modello non è raggiungibile (è avviato? AI_BASE_URL è giusto?)' : e.message;
       if (!res.headersSent) res.status(502).json({ error: 'La guida non risponde: ' + why });
       else res.end('\n\n[La risposta si è interrotta: ' + e.message + ']');

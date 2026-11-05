@@ -540,3 +540,8 @@ body.soc-open .soc-fab { display: none; }
 .soc-quick::-webkit-scrollbar { display: none; }
 .soc-quick button { flex: none; }
 .soc-guide { max-height: 42%; }
+
+/* Guida senza modello collegato */
+.soc-model.off { background: var(--yellow-soft); color: #7a5900; }
+@media (prefers-color-scheme: dark) { .soc-model.off { color: var(--yellow); } }
+.soc-offline { font-size: 0.82rem; padding: 8px 10px; border-radius: 10px; background: var(--yellow-soft); border-left: 3px solid var(--yellow); }

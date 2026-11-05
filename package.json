@@ -9,7 +9,7 @@
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "seed": "node scripts/seed.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test --test-timeout=240000 test/*.test.js"
   },
   "engines": {
     "node": ">=18.17"
