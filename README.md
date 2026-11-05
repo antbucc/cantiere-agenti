@@ -24,7 +24,7 @@ Aprite http://localhost:3000 e inserite il codice del corso.
 ## Avvio in aula (rete locale)
 
 1. Collegate il portatile alla stessa rete Wi-Fi degli studenti.
-2. `npm start`: il terminale mostra gli indirizzi, per esempio `rete locale: http://192.168.0.76:3000`.
+2. `npm start`: il terminale mostra gli indirizzi, per esempio `rete locale: http://192.168.1.23:3000`.
 3. Scrivete alla lavagna (o proiettate) l'indirizzo e il **codice del corso**.
 4. Se il sistema operativo lo chiede, consentite a Node di accettare connessioni in entrata.
 
