@@ -4,8 +4,9 @@ import * as store from './store.js';
 import { api, codes, request } from './api.js';
 import { h, live, KEEP, refreshLive, progressBar, toast, dialog } from './ui.js';
 import {
-  SECTIONS, SETTORI, BADGES, PUNTI_BADGE, MODELLI, items, completion, planCheck, boardTotal, reusers,
+  SECTIONS, SETTORI, BADGES, PUNTI_BADGE, MODELLI, items, completion, boardTotal, reusers,
 } from './model.js';
+import { workflowsOf, graphCheck, buildCatalog, usedIn } from './grafo-core.js';
 import { addReusedAgent } from './sections.js';
 
 const page = (title, lead, ...body) => h('article', { class: 'page' },
@@ -82,7 +83,8 @@ export function verifica() {
     live(() => {
       const doc = store.state.doc;
       const c = completion(doc);
-      const plan = planCheck(doc);
+      const catalog = buildCatalog([...store.state.groups.values()]);
+      const wfs = workflowsOf(doc);
       return [
         h('div', { class: 'summary-box' },
           h('div', {}, h('span', { class: 'big mono' }, `${c.total}%`), h('span', {}, ' completato')),
@@ -95,8 +97,11 @@ export function verifica() {
             h('span', { class: 'mono pct' }, `${st.pct}%`), progressBar(st.pct),
             st.warnings.length ? h('ul', { class: 'warn-list' }, st.warnings.map((w) => h('li', {}, w))) : h('p', { class: 'ok-text' }, '✓ Completa'));
         })),
-        h('div', { class: 'plan ' + (plan.ok ? 'ok' : '') }, h('h3', {}, 'Verifica del piano (Capitolo 7)'),
-          h('ul', {}, plan.checks.map((k) => h('li', { class: k.ok ? 'ok' : 'ko' }, h('span', { class: 'mark' }, k.ok ? '✓' : '✕'), k.label)))),
+        wfs.length ? wfs.map((wf) => {
+          const res = graphCheck(wf, { doc, catalog, groupId: store.state.activeId });
+          return h('div', { class: 'plan ' + (res.ok ? 'ok' : '') }, h('h3', {}, `Verifica del grafo · «${wf.nome || 'Workflow'}» (Capitolo 7)`),
+            h('ul', {}, res.checks.map((k) => h('li', { class: k.ok ? 'ok' : 'ko' }, h('span', { class: 'mark' }, k.ok ? '✓' : '✕'), k.label, k.detail ? h('small', {}, ' — ' + k.detail) : null))));
+        }) : h('div', { class: 'plan' }, h('h3', {}, 'Verifica del grafo (Capitolo 7)'), h('p', {}, 'Nessun workflow ancora.')),
       ];
     }),
     h('div', { class: 'row' }, h('a', { class: 'btn primary', href: '#/esporta' }, 'Vai all\'export →')));
@@ -174,7 +179,7 @@ export function registro() {
       return h('button', { class: 'btn small-btn', onclick: () => { if (addReusedAgent(g.id, a.id)) location.hash = '#/s/agents'; } }, '♻ Usa nella nostra parte');
     };
     return h('div', { class: 'table-wrap' }, h('table', { class: 'registry' },
-      h('thead', {}, h('tr', {}, ['Agente', 'Ruolo', 'Task Force', 'Modello', 'Socratico', 'Precondizioni → effetti', 'Riusato da', ''].map((t) => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, ['Agente', 'Ruolo', 'Task Force', 'Modello', 'Socratico', 'Precondizioni → effetti', 'Nei workflow', 'Riusato da', ''].map((t) => h('th', {}, t)))),
       h('tbody', {}, rows.map(({ a, g }) => h('tr', {},
         h('td', { 'data-label': 'Agente' }, h('b', {}, a.nome || '—'),
           a.origine ? h('div', { class: 'small muted' }, `♻ da ${a.origine.nome || 'agente'} di «${a.origine.groupName}»`) : null),
@@ -183,6 +188,7 @@ export function registro() {
         h('td', { 'data-label': 'Modello' }, MODELLI[a.modello] || '—'),
         h('td', { 'data-label': 'Socratico' }, a.socratico ? h('span', { class: 'chip soc' }, 'socratico') : '—'),
         h('td', { 'data-label': 'Precondizioni → effetti', class: 'pe' }, h('span', {}, a.precond || '…'), h('span', { class: 'arrow' }, ' → '), h('span', {}, a.effetti || '…')),
+        h('td', { 'data-label': 'Nei workflow' }, usedIn(groups, g.id, a.id).map(({ group, wf }) => `«${wf.nome || 'Workflow'}»${group.id === g.id ? '' : ` (${group.name})`}`).join(', ') || '—'),
         h('td', { 'data-label': 'Riusato da' }, reusers(groups, a.id).join(', ') || '—'),
         h('td', {}, useCell(a, g)))))));
   });

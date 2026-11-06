@@ -12,9 +12,13 @@
 import {
   SECTIONS, FIELDS, PERSONA_TIPI, MODELLI, PATTERNS, LIVELLI_UMANO, TEST_TIPI, ESITI,
   OUTPUTS, CRITERI, FASCE, SUPERVISIONE, DOMANDE_ETICA, COMPETENZE, LIVELLI_COMP,
-  items, filled, planCheck, reusers,
+  items, filled, reusers,
 } from '../public/js/model.js';
-import { bookOrder } from './export.js';
+import { bookOrder, roman } from './export.js';
+import {
+  workflowsOf, graphOf, graphCheck, buildCatalog, readingOrder, resolveAgent, nodeLabel, nodeSub,
+  isExternal, usedIn, NODE_W, NODE_H,
+} from '../public/js/grafo-core.js';
 
 // ---------------------------------------------------------------------------
 // Testo → LaTeX
@@ -100,6 +104,151 @@ const campi = (obj, defs) => defs.map((f) => campo(f.label, obj?.[f.key])).join(
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' }) : '');
 
 // ---------------------------------------------------------------------------
+// Schede degli agenti, diagrammi e workflow (usati dal catalogo, dalla Parte II
+// e dall'export della singola Task Force)
+// ---------------------------------------------------------------------------
+
+/** Il riferimento a un agente: link alla sua scheda se è nel libro, altrimenti solo il nome. */
+function agentRef(groupId, agentId, name, ctx) {
+  const lab = ctx.agentLabel?.(groupId, agentId);
+  return lab ? `\\hyperref[${lab}]{${tex(name)}}` : tex(name);
+}
+
+/** La scheda di un agente: etichette, origine, dove è usato, campi; con o senza prompt. */
+export function agentSectionTex(a, g, ctx, { heading = 'section', withPrompt = true, slug } = {}) {
+  const out = [];
+  const label = ctx.agentLabel?.(g.id, a.id) || `agente:${slug || labelSlug(g.name)}:${labelSlug(a.id)}`;
+  out.push(`\\${heading}{${tex(a.nome || 'Agente senza nome')}}\\label{${label}}`);
+  const tags = [a.socratico ? 'socratico' : null, MODELLI[a.modello] ? `modello ${MODELLI[a.modello].toLowerCase()}` : null,
+    a.temperatura !== undefined && a.temperatura !== '' ? `temperatura ${a.temperatura}` : null].filter(Boolean);
+  if (tags.length) out.push(`\\noindent${tags.map((t) => `\\etichetta{${tex(t)}}`).join('~')}\\par\\smallskip`);
+  out.push(`\\noindent\\textit{Task Force ${tex(g.name)}.}\\par\\smallskip`);
+  if (a.origine) {
+    const who = `${tex(a.origine.nome || 'un agente')} di \\guillemotleft{}${tex(a.origine.groupName)}\\guillemotright{}`;
+    const src = ctx.agentLabel?.(a.origine.groupId, a.origine.agentId);
+    out.push(`\\noindent\\textit{Copiato e adattato da ${src ? `\\hyperref[${src}]{${who}}` : who}.}\\par\\smallskip`);
+  }
+  const by = reusers(ctx.groups || [g], a.id);
+  if (by.length) out.push(`\\noindent\\textit{Copiato da: ${by.map(tex).join(', ')}.}\\par\\smallskip`);
+  const where = usedIn(ctx.groups || [g], g.id, a.id);
+  out.push(`\\noindent\\textit{Nei workflow: ${where.length ? where.map(({ group, wf }) => {
+    const wl = ctx.wfLabel?.(group.id, wf.id);
+    const name = `${tex(wf.nome || 'Workflow')}${group.id === g.id ? '' : ` (${tex(group.name)})`}`;
+    return wl ? `\\hyperref[${wl}]{${name}}` : name;
+  }).join(', ') : 'nessuno'}.}\\par\\smallskip`);
+  out.push('\\begin{description}[style=nextline,leftmargin=1em,labelindent=0pt]');
+  for (const f of FIELDS.agent) out.push(`  \\item[${tex(f.label)}] ${texBlock(a[f.key])}`);
+  if (a.socratico) out.push(`  \\item[Domande socratiche] ${texBlock(a.domande)}`);
+  if (a.origine) out.push(`  \\item[Cosa abbiamo adattato] ${texBlock(a.adattamento)}`);
+  out.push('\\end{description}');
+  if (withPrompt) out.push(promptTex(a, heading === 'section' ? 'subsection*' : 'subsubsection*'));
+  return out.join('\n') + '\n';
+}
+
+/** Il prompt corrente e la storia delle versioni. */
+function promptTex(a, heading = 'subsection*') {
+  const versioni = Array.isArray(a.versioni) ? a.versioni : [];
+  const out = [`\\${heading}{Prompt (versione corrente${versioni.length ? `, dopo v${versioni.length}` : ''})}`, verbatim(a.prompt)];
+  if (versioni.length) {
+    out.push(`\\${heading}{Storia delle versioni}`);
+    versioni.forEach((v) => {
+      out.push(`\\paragraph{v${v.n} \\textperiodcentered{} ${tex(fmtDate(v.at))}} ${texBlock(v.nota)}\\par`);
+      out.push(verbatim(v.prompt, 'fontsize=\\footnotesize'));
+    });
+  }
+  return out.join('\n');
+}
+
+/**
+ * Il grafo di un workflow in TikZ. Le posizioni vengono dal compositore, ma le
+ * distanze sono fisse in centimetri (abbastanza per due o tre righe di testo):
+ * se il diagramma è più largo della pagina viene ridotto in blocco, così i nodi
+ * non si sovrappongono mai.
+ */
+export function tikzGraph(wf, c) {
+  const { nodes, edges } = graphOf(wf);
+  if (!nodes.length) return '\\textit{Grafo vuoto.}\n';
+  const minX = Math.min(...nodes.map((n) => n.x ?? 0));
+  const minY = Math.min(...nodes.map((n) => n.y ?? 0));
+  const KX = 3.3 / 240; // cm per pixel in orizzontale (una colonna del compositore = 3,3 cm)
+  const KY = 2.0 / 100; // cm per pixel in verticale (una riga = 2 cm)
+  const BOX_W = 2.9;
+  const width = Math.max(...nodes.map((n) => ((n.x ?? 0) - minX) * KX)) + BOX_W;
+  const id = new Map(nodes.map((n, i) => [n.id, `n${i + 1}`]));
+  const style = { agente: 'tipo-agente', umano: 'tipo-umano', input: 'tipo-io', output: 'tipo-io' };
+  const lines = ['\\begin{tikzpicture}'];
+  for (const n of nodes) {
+    const ext = n.tipo === 'agente' && isExternal(n.agente);
+    const sub = n.tipo === 'umano' || ext ? `\\\\[-1pt]{\\scriptsize ${tex(nodeSub(n, c.doc, c.catalog, c.groupId))}}` : '';
+    const x = (((n.x ?? 0) - minX) * KX + BOX_W / 2).toFixed(2);
+    const y = (-((n.y ?? 0) - minY) * KY).toFixed(2);
+    lines.push(`  \\node[nodo, ${style[n.tipo] || 'tipo-agente'}${ext ? ', esterno' : ''}] (${id.get(n.id)}) at (${x},${y}) {\\textbf{${tex(nodeLabel(n, c.doc, c.catalog, c.groupId))}}${sub}};`);
+  }
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  for (const e of edges) {
+    const a = byId.get(e.da); const b = byId.get(e.a);
+    const lbl = filled(e.condizione) ? ` node[etichetta-freccia] {${tex(e.condizione)}}` : '';
+    const dx = (b.x ?? 0) - (a.x ?? 0); const dy = (b.y ?? 0) - (a.y ?? 0);
+    if (e.ritorno) {
+      // il ritorno passa sopra i nodi, dove non c'è niente
+      lines.push(`  \\draw[freccia, dashed] (${id.get(e.da)}.north) to[out=90, in=90, looseness=1.1]${lbl.replace('etichetta-freccia', 'etichetta-freccia, above')} (${id.get(e.a)}.north);`);
+    } else if (Math.abs(dx) < NODE_W) {
+      // stessa colonna: dall'alto in basso (o viceversa)
+      lines.push(dy >= 0
+        ? `  \\draw[freccia] (${id.get(e.da)}.south) -- ${lbl ? lbl.replace('etichetta-freccia', 'etichetta-freccia, right, pos=0.5') : ''} (${id.get(e.a)}.north);`
+        : `  \\draw[freccia] (${id.get(e.da)}.north) -- ${lbl ? lbl.replace('etichetta-freccia', 'etichetta-freccia, right, pos=0.5') : ''} (${id.get(e.a)}.south);`);
+    } else {
+      // curve divaricate quando il nodo d'arrivo è più in alto o più in basso
+      const out = dy < -10 ? 25 : dy > 10 ? -25 : 0;
+      lines.push(`  \\draw[freccia] (${id.get(e.da)}.east) to[out=${out}, in=180]${lbl} (${id.get(e.a)}.west);`);
+    }
+  }
+  lines.push('\\end{tikzpicture}');
+  const body = lines.join('\n');
+  // più largo della pagina: riduzione in blocco (testo compreso), senza sovrapposizioni
+  return `\\begin{center}\n${width > 15.5 ? `\\resizebox{\\linewidth}{!}{%\n${body}%\n}` : body}\n\\end{center}\n`;
+}
+
+/** Un workflow: diagramma, come funziona (con i rimandi alle schede), verifica, domande. */
+export function workflowTex(wf, g, ctx, { heading = 'chapter', withGroup = false } = {}) {
+  const c = { doc: g.data, catalog: ctx.catalog, groupId: g.id };
+  const out = [];
+  const lab = ctx.wfLabel?.(g.id, wf.id);
+  out.push(`\\${heading}{${tex(wf.nome || 'Workflow')}${withGroup ? ` \\textperiodcentered{} ${tex(g.name)}` : ''}}${lab ? `\\label{${lab}}` : ''}`);
+  out.push(`\\noindent\\etichetta{${tex(PATTERNS[wf.pattern] || wf.pattern || 'pattern non indicato')}}~\\textit{Task Force ${tex(g.name)}.}\\par\\medskip`);
+  if (filled(wf.motivazione)) out.push(campo('Perché questo pattern', wf.motivazione));
+  out.push(tikzGraph(wf, c));
+  const sub = heading === 'chapter' ? 'section*' : 'subsection*';
+  out.push(`\\${sub}{Come funziona}`);
+  const steps = readingOrder(wf, c).filter((r) => r.node.tipo !== 'output');
+  if (!steps.length) out.push('\\textit{Grafo vuoto.}\n');
+  else {
+    out.push('\\begin{enumerate}[leftmargin=*]');
+    for (const r of steps) {
+      let who;
+      if (r.node.tipo === 'umano') who = `\\colorbox{giallo!45}{\\textbf{${tex(r.label)}}} --- ${tex(r.sub)}`;
+      else if (r.node.tipo === 'input') who = `\\textbf{${tex(r.label)}}`;
+      else {
+        const res = resolveAgent(r.node.agente, c.doc, c.catalog, c.groupId);
+        const [gid, aid] = isExternal(r.node.agente) ? r.node.agente.split('/') : [g.id, r.node.agente];
+        who = `\\textbf{${res ? agentRef(gid, aid, r.label, ctx) : tex(r.label)}}${isExternal(r.node.agente) ? ` \\textit{(${tex(r.sub)})}` : ''}`;
+      }
+      const to = r.to.map((t) => `${tex(t.label)}${filled(t.condizione) ? ` se ${tex(t.condizione)}` : ''}${t.ritorno ? ' (ritorno)' : ''}`).join('; ');
+      out.push(`  \\item ${who}${filled(r.node.nota) ? `: ${tex(r.node.nota)}` : ''}${to ? ` $\\rightarrow$ ${to}` : ''}`);
+    }
+    out.push('\\end{enumerate}');
+  }
+  out.push(`\\${sub}{Verifica del grafo}\n\\begin{itemize}[leftmargin=*]`);
+  for (const k of graphCheck(wf, c).checks) out.push(`  \\item[${k.ok ? '\\textcolor{verde}{\\checkmark}' : '\\textcolor{rosso}{$\\square$}'}] ${tex(k.label)}${k.detail ? ` (${tex(k.detail)})` : ''}`);
+  out.push('\\end{itemize}');
+  out.push(campi(wf, FIELDS.workflow.slice(1)));
+  if (filled(wf.passi)) out.push(campo('I passi in parole', wf.passi));
+  if (filled(wf.dsl)) out.push(`\\${sub}{Configurazione del workflow}`, verbatim(wf.dsl));
+  if (filled(wf.screenshot)) out.push(campo('Screenshot', wf.screenshot));
+  return out.join('\n') + '\n';
+}
+
+// ---------------------------------------------------------------------------
 // Una Task Force → una \part con 11 capitoli
 // ---------------------------------------------------------------------------
 
@@ -108,7 +257,8 @@ const fmtDate = (iso) => (iso ? new Date(iso).toLocaleString('it-IT', { dateStyl
  * @param ctx.slug       prefisso delle label di questa parte
  * @param ctx.agentLabel funzione (groupId, agentId) → label dell'agente, se esiste nel libro
  */
-export function groupToLatex(group, { slug = labelSlug(group.name), agentLabel = () => null, allGroups = [group] } = {}) {
+export function groupToLatex(group, { slug = labelSlug(group.name), agentLabel = () => null, wfLabel = () => null, allGroups = [group], inBook = false } = {}) {
+  const ctx = { agentLabel, wfLabel, groups: allGroups, catalog: buildCatalog(allGroups) };
   const d = group.data || {};
   const out = [];
   const L = (key) => `cap:${slug}:${key}`;
@@ -125,7 +275,6 @@ export function groupToLatex(group, { slug = labelSlug(group.name), agentLabel =
   const personas = items(d.personas);
   const personaName = new Map(personas.map((p, i) => [p.id, `P${i + 1} ${p.nome || ''}`.trim()]));
   const agents = items(d.agents);
-  const agentName = new Map(agents.map((a) => [a.id, a.nome || 'Agente senza nome']));
 
   // 1 · Scenario
   chapter('scenario');
@@ -161,75 +310,40 @@ export function groupToLatex(group, { slug = labelSlug(group.name), agentLabel =
   out.push(campi(d.mockup, FIELDS.mockup));
   if (filled(d.mockup?.foto)) out.push(campo('Foto del mockup', d.mockup.foto));
 
-  // 5 · Agenti
-  chapter('agents');
-  if (!agents.length) out.push('\\textit{Nessun agente.}\n');
-  agents.forEach((a) => {
-    out.push(`\\section{${tex(a.nome || 'Agente senza nome')}}\\label{${agentLabel(group.id, a.id) || `agente:${slug}:${labelSlug(a.id)}`}}`);
-    const tags = [a.socratico ? 'socratico' : null, MODELLI[a.modello] ? `modello ${MODELLI[a.modello].toLowerCase()}` : null,
-      a.temperatura !== undefined && a.temperatura !== '' ? `temperatura ${a.temperatura}` : null].filter(Boolean);
-    if (tags.length) out.push(`\\noindent${tags.map((t) => `\\etichetta{${tex(t)}}`).join('~')}\\par\\smallskip`);
-    if (a.origine) {
-      const src = agentLabel(a.origine.groupId, a.origine.agentId);
-      const who = `${tex(a.origine.nome || 'un agente')} di \\guillemotleft{}${tex(a.origine.groupName)}\\guillemotright{}`;
-      out.push(`\\noindent\\textit{Riusato da ${src ? `\\hyperref[${src}]{${who}}` : who}.}\\par\\smallskip`);
+  // 5 · Agenti, 6 · Prompt e versioni, 7 · Workflow
+  // nel libro rimandano al catalogo (Parte I) e ai workflow (Parte II); da soli contengono tutto
+  const wfs = workflowsOf(d);
+  if (inBook) {
+    chapter('agents');
+    if (!agents.length) out.push('\\textit{Nessun agente.}\n');
+    else {
+      out.push('Le schede complete, con prompt e versioni, sono nella Parte~\\ref{part:catalogo}.\n\\begin{itemize}[leftmargin=*]');
+      for (const a of agents) out.push(`  \\item \\textbf{${agentRef(group.id, a.id, a.nome || 'Agente senza nome', ctx)}}${a.socratico ? ' (socratico)' : ''} --- ${tex(a.ruolo || '')}`);
+      out.push('\\end{itemize}');
     }
-    const by = reusers(allGroups, a.id);
-    if (by.length) out.push(`\\noindent\\textit{Riusato da: ${by.map(tex).join(', ')}.}\\par\\smallskip`);
-    out.push('\\begin{description}[style=nextline,leftmargin=1em,labelindent=0pt]');
-    for (const f of FIELDS.agent) out.push(`  \\item[${tex(f.label)}] ${texBlock(a[f.key])}`);
-    if (a.socratico) out.push(`  \\item[Domande socratiche] ${texBlock(a.domande)}`);
-    if (a.origine) out.push(`  \\item[Cosa abbiamo adattato] ${texBlock(a.adattamento)}`);
-    out.push('\\end{description}');
-    out.push(`\\noindent Prompt e versioni: Capitolo~\\ref{${L('prompt')}}.\n`);
-  });
-
-  // 6 · Prompt e versioni
-  chapter('prompt');
-  if (!agents.length) out.push('\\textit{Nessun agente.}\n');
-  agents.forEach((a) => {
-    const versioni = Array.isArray(a.versioni) ? a.versioni : [];
-    out.push(`\\section{Prompt di ${tex(a.nome || 'agente senza nome')}}`);
-    out.push(`\\subsection*{Versione corrente${versioni.length ? ` (dopo v${versioni.length})` : ''}}`);
-    out.push(verbatim(a.prompt));
-    if (versioni.length) {
-      out.push('\\subsection*{Storia delle versioni}');
-      versioni.forEach((v) => {
-        out.push(`\\paragraph{v${v.n} \\textperiodcentered{} ${tex(fmtDate(v.at))}} ${texBlock(v.nota)}\\par`);
-        out.push(verbatim(v.prompt, 'fontsize=\\footnotesize'));
-      });
-    }
-  });
-
-  // 7 · Workflow
-  chapter('workflow');
-  const w = d.workflow || {};
-  const steps = items(w.steps);
-  const pos = new Map(steps.map((s, i) => [s.id, i + 1]));
-  out.push(campo('Pattern', PATTERNS[w.pattern] || w.pattern));
-  out.push(campi(w, FIELDS.workflow));
-  out.push('\\subsection*{I passi}');
-  if (!steps.length) out.push('\\textit{Nessun passo.}\n');
-  else {
-    out.push('\\begin{enumerate}[leftmargin=*]');
-    steps.forEach((s) => {
-      if (s.tipo === 'umano') {
-        out.push(`  \\item \\colorbox{giallo!45}{\\textbf{Umano nel ciclo}} --- ${tex(LIVELLI_UMANO[s.livello] || 'livello non indicato')}${filled(s.nota) ? `: ${tex(s.nota)}` : ''}`);
-      } else {
-        const by = s.soddisfatta === 'input' ? 'input umano iniziale' : pos.has(s.soddisfatta) ? `passo ${pos.get(s.soddisfatta)}` : 'non indicato';
-        out.push(`  \\item \\textbf{${tex(agentName.get(s.agente) || 'agente non scelto')}} --- precondizioni da: ${tex(by)}${filled(s.nota) ? `. ${tex(s.nota)}` : ''}`);
+    chapter('prompt');
+    out.push(agents.length ? 'I prompt, nella versione corrente e con la storia delle versioni, sono nelle schede della Parte~\\ref{part:catalogo}.\n' : '\\textit{Nessun agente.}\n');
+    chapter('workflow');
+    if (!wfs.length) out.push('\\textit{Nessun workflow.}\n');
+    else {
+      out.push('I diagrammi e la verifica sono nella Parte~\\ref{part:workflow}.\n\\begin{itemize}[leftmargin=*]');
+      for (const wf of wfs) {
+        const wl = wfLabel(group.id, wf.id);
+        out.push(`  \\item \\textbf{${wl ? `\\hyperref[${wl}]{${tex(wf.nome || 'Workflow')}}` : tex(wf.nome || 'Workflow')}} --- ${tex(PATTERNS[wf.pattern] || wf.pattern || 'pattern non indicato')}`);
       }
-    });
-    out.push('\\end{enumerate}');
+      out.push('\\end{itemize}');
+    }
+  } else {
+    chapter('agents');
+    if (!agents.length) out.push('\\textit{Nessun agente.}\n');
+    agents.forEach((a) => out.push(agentSectionTex(a, group, ctx, { withPrompt: false, slug })));
+    chapter('prompt');
+    if (!agents.length) out.push('\\textit{Nessun agente.}\n');
+    agents.forEach((a) => out.push(`\\section{Prompt di ${tex(a.nome || 'agente senza nome')}}`, promptTex(a)));
+    chapter('workflow');
+    if (!wfs.length) out.push('\\textit{Nessun workflow.}\n');
+    wfs.forEach((wf) => out.push(workflowTex(wf, group, ctx, { heading: 'section' })));
   }
-  out.push('\\subsection*{Verifica del piano}\n\\begin{itemize}[leftmargin=*]');
-  for (const c of planCheck(d).checks) {
-    out.push(`  \\item[${c.ok ? '\\textcolor{verde}{\\checkmark}' : '\\textcolor{rosso}{$\\square$}'}] ${tex(c.label)}${c.detail ? ` (${tex(c.detail)})` : ''}`);
-  }
-  out.push('\\end{itemize}');
-  if (filled(w.passi)) out.push(campo('I passi in parole', w.passi));
-  if (filled(w.dsl)) out.push('\\subsection*{Configurazione del workflow}', verbatim(w.dsl));
-  if (filled(w.screenshot)) out.push(campo('Screenshot', w.screenshot));
 
   // 8 · Test
   chapter('tests');
@@ -305,6 +419,8 @@ export const PREAMBLE = String.raw`% Preambolo del libro "Agenti al Lavoro" — 
 \usepackage{fvextra}
 \usepackage[most]{tcolorbox}
 \usepackage{titlesec}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta}
 \usepackage[hidelinks,bookmarksnumbered]{hyperref}
 
 % Palette di AIM-PRO
@@ -315,6 +431,17 @@ export const PREAMBLE = String.raw`% Preambolo del libro "Agenti al Lavoro" — 
 \definecolor{verde}{HTML}{2F9E6F}
 \definecolor{linea}{HTML}{C9C9C4}
 \definecolor{inchiostro}{HTML}{23243A}
+
+% Stili dei diagrammi dei workflow
+\tikzset{
+  nodo/.style={draw, rounded corners=3pt, align=center, font=\footnotesize, inner sep=3pt, line width=0.7pt, text width=2.6cm, minimum height=1cm},
+  tipo-agente/.style={fill=primario!10, draw=primario},
+  tipo-umano/.style={fill=giallo!35, draw=giallo!70!black},
+  tipo-io/.style={fill=secondario!45, draw=secondario!50!black, rounded corners=9pt},
+  esterno/.style={dashed},
+  freccia/.style={-{Stealth[length=2.2mm]}, draw=inchiostro!65, line width=0.7pt},
+  etichetta-freccia/.style={fill=white, font=\scriptsize, inner sep=1pt, pos=0.38},
+}
 
 % I capitoli ricominciano da 1 in ogni parte (una parte = una Task Force)
 \counterwithin*{chapter}{part}
@@ -367,42 +494,73 @@ function uniqueSlugs(groups) {
 
 const pad = (n) => String(n).padStart(2, '0');
 
-/**
- * Il libro come progetto: { 'main.tex': ..., 'preambolo.tex': ..., 'parti/01-....tex': ... }.
- * Va bene sia per lo zip da caricare su Overleaf sia per la compilazione in locale.
- */
-export function bookProject(groups, { titolo = 'Agenti al Lavoro', sottotitolo = "Libro dei casi d'uso" } = {}) {
-  const ordered = bookOrder(groups).flatMap((x) => x.groups);
-  const slugs = uniqueSlugs(ordered);
-  const agentLabel = agentLabels(ordered, slugs);
-  const files = { 'preambolo.tex': PREAMBLE };
-  const inputs = [];
-  ordered.forEach((g, i) => {
-    const name = `parti/${pad(i + 1)}-${slugs.get(g.id)}.tex`;
-    files[name] = groupToLatex(g, { slug: slugs.get(g.id), agentLabel, allGroups: ordered });
-    inputs.push(`\\input{${name.replace(/\.tex$/, '')}}`);
-  });
+/** Label dei workflow di tutto il libro. */
+function wfLabels(groups, slugs) {
+  const map = new Map();
+  for (const g of groups) for (const wf of workflowsOf(g.data)) map.set(`${g.id}/${wf.id}`, `wf:${slugs.get(g.id)}:${labelSlug(wf.id)}`);
+  return (groupId, wfId) => map.get(`${groupId}/${wfId}`) || null;
+}
 
-  // Indice per settore (pagina dopo il sommario)
-  const settori = bookOrder(groups).map(({ settore, groups: gs }) => `\\item[${tex(settore)}] ${gs.map((g) => `Parte~\\ref{part:${slugs.get(g.id)}}: ${tex(filled(g.data?.titolo) ? g.data.titolo.trim() : g.name)} \\textit{(${tex(g.name)})}`).join(' \\newline\n')}`);
-
-  // Appendice A · Registro degli agenti
+/** Registro degli agenti (appendice): nome con link alla scheda, workflow, origine. */
+function registryTex(ordered, ctx) {
   const rows = [];
   for (const g of ordered) {
     for (const a of items(g.data?.agents)) {
-      const lab = agentLabel(g.id, a.id);
-      const src = a.origine ? agentLabel(a.origine.groupId, a.origine.agentId) : null;
+      const lab = ctx.agentLabel(g.id, a.id);
+      const src = a.origine ? ctx.agentLabel(a.origine.groupId, a.origine.agentId) : null;
+      const wfs = usedIn(ordered, g.id, a.id).map(({ group, wf }) => `${tex(wf.nome || 'Workflow')}${group.id === g.id ? '' : ` (${tex(group.name)})`}`);
       const extra = [
-        a.origine ? `riusato da ${src ? `\\hyperref[${src}]{${tex(a.origine.nome || 'agente')}}` : tex(a.origine.nome || 'agente')} di ${tex(a.origine.groupName)}` : null,
-        reusers(ordered, a.id).length ? `riusato da ${reusers(ordered, a.id).map(tex).join(', ')}` : null,
+        wfs.length ? `nei workflow: ${wfs.join(', ')}` : 'in nessun workflow',
+        a.origine ? `copiato da ${src ? `\\hyperref[${src}]{${tex(a.origine.nome || 'agente')}}` : tex(a.origine.nome || 'agente')} di ${tex(a.origine.groupName)}` : null,
       ].filter(Boolean);
       rows.push([
-        `\\hyperref[${lab}]{\\textbf{${tex(a.nome || '---')}}}${extra.length ? ` \\newline{\\footnotesize\\itshape ${extra.join('; ')}}` : ''}`,
+        `\\hyperref[${lab}]{\\textbf{${tex(a.nome || '---')}}} \\newline{\\footnotesize\\itshape ${extra.join('; ')}}`,
         tex(g.name), tex(MODELLI[a.modello] || '—'), a.socratico ? 'sì' : 'no', cellTex(a.ruolo),
         `${filled(a.precond) ? tex(a.precond) : '\\dots'} $\\rightarrow$ ${filled(a.effetti) ? tex(a.effetti) : '\\dots'}`,
       ]);
     }
   }
+  return longTable('P{3.2cm}P{1.9cm}P{1.2cm}P{0.8cm}LL', ['Agente', 'Task Force', 'Modello', 'Socr.', 'Ruolo', 'Precondizioni → effetti'], rows);
+}
+
+/**
+ * Il libro come progetto: { 'main.tex', 'preambolo.tex', 'catalogo.tex', 'workflow.tex',
+ * 'parti/NN-….tex', 'appendici.tex' }. Parte I: il catalogo di tutti gli agenti;
+ * Parte II: i workflow; poi una parte per Task Force; in appendice registro e lezioni.
+ */
+export function bookProject(groups, { titolo = 'Agenti al Lavoro', sottotitolo = "Libro dei casi d'uso" } = {}) {
+  const ordered = bookOrder(groups).flatMap((x) => x.groups);
+  const slugs = uniqueSlugs(ordered);
+  const ctx = { agentLabel: agentLabels(ordered, slugs), wfLabel: wfLabels(ordered, slugs), groups: ordered, catalog: buildCatalog(ordered) };
+  const files = { 'preambolo.tex': PREAMBLE };
+
+  // Parte I · Catalogo degli agenti
+  const catalogo = ['\\part{Catalogo degli agenti}\\label{part:catalogo}',
+    'Tutti gli agenti progettati nel corso, raggruppati per Task Force. Ogni scheda dice in quali workflow l\'agente è usato, anche da altre Task Force che lo prendono dal catalogo.\n'];
+  for (const g of ordered) {
+    const list = items(g.data?.agents);
+    if (!list.length) continue;
+    catalogo.push(`\\chapter{Gli agenti di \\guillemotleft{}${tex(g.name)}\\guillemotright{}}`);
+    list.forEach((a) => catalogo.push(agentSectionTex(a, g, ctx, { slug: slugs.get(g.id) })));
+  }
+  files['catalogo.tex'] = catalogo.join('\n');
+
+  // Parte II · I workflow
+  const wfPart = ['\\part{I workflow}\\label{part:workflow}',
+    'Come gli agenti sono composti in grafi. Ogni freccia dice che gli effetti di un nodo coprono le precondizioni del successivo; le frecce tratteggiate tornano indietro; i nodi tratteggiati sono agenti presi dal catalogo di un\'altra Task Force.\n'];
+  for (const g of ordered) for (const wf of workflowsOf(g.data)) wfPart.push(workflowTex(wf, g, ctx, { withGroup: true }));
+  if (wfPart.length === 2) wfPart.push('\\chapter*{Nessun workflow}');
+  files['workflow.tex'] = wfPart.join('\n');
+
+  // Le Task Force
+  const inputs = ['\\input{catalogo}', '\\input{workflow}'];
+  ordered.forEach((g, i) => {
+    const name = `parti/${pad(i + 1)}-${slugs.get(g.id)}.tex`;
+    files[name] = groupToLatex(g, { slug: slugs.get(g.id), agentLabel: ctx.agentLabel, wfLabel: ctx.wfLabel, allGroups: ordered, inBook: true });
+    inputs.push(`\\input{${name.replace(/\.tex$/, '')}}`);
+  });
+
+  const settori = bookOrder(groups).map(({ settore, groups: gs }) => `\\item[${tex(settore)}] ${gs.map((g) => `Parte~\\ref{part:${slugs.get(g.id)}}: ${tex(filled(g.data?.titolo) ? g.data.titolo.trim() : g.name)} \\textit{(${tex(g.name)})}`).join(' \\newline\n')}`);
   const lezioni = ordered.map((g) => {
     const c = g.data?.competenze || {};
     return [`\\section{${tex(g.name)}}`, campo('Lezioni', c.lezioni), campo('Raccomandazione per un formatore', c.raccomandazione), campo('Cosa non automatizzeremmo', c.nonauto)].join('\n');
@@ -412,17 +570,19 @@ export function bookProject(groups, { titolo = 'Agenti al Lavoro', sottotitolo =
     '\\part*{Appendici}\\addcontentsline{toc}{part}{Appendici}',
     '\\appendix',
     '\\chapter{Registro degli agenti}\\label{app:registro}',
-    `Tutti gli agenti di tutte le Task Force. Il nome rimanda alla scheda dell'agente.\n`,
-    longTable('P{2.8cm}P{2cm}P{1.3cm}P{0.9cm}LL', ['Agente', 'Task Force', 'Modello', 'Socr.', 'Ruolo', 'Precondizioni → effetti'], rows),
+    `Tutti gli agenti in una tabella. Il nome rimanda alla scheda nel catalogo.\n`,
+    registryTex(ordered, ctx),
     '\\chapter{Lezioni apprese}\\label{app:lezioni}',
     lezioni || '\\textit{Nessuna Task Force.}',
   ].join('\n');
 
+  const nAgents = ordered.reduce((n, g) => n + items(g.data?.agents).length, 0);
+  const nWf = ordered.reduce((n, g) => n + workflowsOf(g.data).length, 0);
   files['main.tex'] = String.raw`% Libro "Agenti al Lavoro" — progetto LaTeX generato da AIM-PRO Lab.
 % Su Overleaf: New Project → Upload Project → questo .zip. Compilatore: pdfLaTeX (predefinito).
-% Ogni Task Force è un file in parti/: potete correggerlo, riordinarlo o toglierlo da qui sotto.
-% Label disponibili: part:<task-force>, cap:<task-force>:<capitolo>, agente:<task-force>:<id>,
-% persona:<task-force>:<id>, app:registro, app:lezioni.
+% catalogo.tex = Parte I (agenti), workflow.tex = Parte II, parti/ = una parte per Task Force.
+% Label disponibili: part:catalogo, part:workflow, part:<task-force>, cap:<task-force>:<capitolo>,
+% agente:<task-force>:<id>, wf:<task-force>:<id>, persona:<task-force>:<id>, app:registro, app:lezioni.
 \documentclass[11pt,a4paper,openany]{book}
 \input{preambolo}
 ${docTitle(titolo, sottotitolo)}
@@ -433,11 +593,14 @@ ${docTitle(titolo, sottotitolo)}
 \tableofcontents
 
 \chapter{Come leggere questo libro}
-Ogni parte è il lavoro di una Task Force del corso: un caso d'uso progettato, costruito e valutato in due giornate.
-Tutte le parti hanno gli stessi ${SECTIONS.length} capitoli: ${SECTIONS.map((s) => tex(s.titolo)).join(', ')}.
+Il libro raccoglie il lavoro di ${ordered.length} Task Force del corso: ${nAgents} agenti e ${nWf} workflow.
+La Parte~\ref{part:catalogo} è il catalogo di tutti gli agenti, con prompt e versioni.
+La Parte~\ref{part:workflow} mostra come gli agenti sono composti in workflow, anche tra Task Force diverse.
+Seguono le parti delle Task Force, con gli stessi capitoli del percorso (${SECTIONS.map((s) => tex(s.titolo)).join(', ')}):
+per agenti e workflow rimandano alle prime due parti.
 In appendice trovate il registro di tutti gli agenti e le lezioni apprese.
 
-\section*{Le parti, per settore}
+\section*{Le Task Force, per settore}
 \begin{description}[style=nextline,leftmargin=1em,labelindent=0pt]
 ${settori.join('\n') || '\\item[---] Nessuna Task Force.'}
 \end{description}
@@ -451,13 +614,17 @@ ${inputs.join('\n')}
   return files;
 }
 
-/** Il capitolo di una sola Task Force come progetto autonomo. */
-export function groupProject(group) {
+/**
+ * La parte di una sola Task Force come progetto autonomo: i capitoli 5–7 contengono
+ * schede, prompt e workflow. allGroups serve a dare un nome agli agenti presi dal catalogo.
+ */
+export function groupProject(group, allGroups = [group]) {
   const slug = labelSlug(group.name);
   const titolo = filled(group.data?.titolo) ? group.data.titolo.trim() : group.name;
+  const own = (gid, aid) => (gid === group.id && group.data?.agents?.[aid] && !group.data.agents[aid].deleted ? `agente:${slug}:${labelSlug(aid)}` : null);
   return {
     'preambolo.tex': PREAMBLE,
-    [`parti/${slug}.tex`]: groupToLatex(group, { slug }),
+    [`parti/${slug}.tex`]: groupToLatex(group, { slug, agentLabel: own, allGroups: allGroups.some((g) => g.id === group.id) ? allGroups : [group, ...allGroups] }),
     'main.tex': String.raw`% Parte di una Task Force (11 capitoli) — generata da AIM-PRO Lab.
 % Su Overleaf: New Project → Upload Project → questo .zip. Compilatore: pdfLaTeX (predefinito).
 \documentclass[11pt,a4paper,openany]{book}

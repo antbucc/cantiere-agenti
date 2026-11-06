@@ -545,3 +545,76 @@ body.soc-open .soc-fab { display: none; }
 .soc-model.off { background: var(--yellow-soft); color: #7a5900; }
 @media (prefers-color-scheme: dark) { .soc-model.off { color: var(--yellow); } }
 .soc-offline { font-size: 0.82rem; padding: 8px 10px; border-radius: 10px; background: var(--yellow-soft); border-left: 3px solid var(--yellow); }
+
+/* ---------- Capitolo 7 · compositore a grafo ---------- */
+.wf-tabs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 16px; }
+.wf-tab { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 99px; padding: 6px 14px; font: 600 0.85rem var(--font); cursor: pointer; }
+.wf-tab.on { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); }
+.grafo { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); margin-bottom: 18px; overflow: hidden; }
+.grafo-toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.grafo-main { display: grid; grid-template-columns: 220px minmax(0, 1fr) 270px; min-height: 420px; }
+.grafo-palette, .grafo-inspector { padding: 10px 12px; overflow-y: auto; max-height: 560px; font-size: 0.85rem; }
+.grafo-palette { border-right: 1px solid var(--line); }
+.grafo-inspector { border-left: 1px solid var(--line); background: var(--surface-2); }
+.grafo-palette h4, .grafo-inspector h4, .grafo-links h4, .grafo-read h4 { font: 700 0.7rem var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 10px 0 6px; }
+.grafo-palette input[type=search] { padding: 5px 8px; font-size: 0.82rem; margin-bottom: 6px; }
+.pal-row { display: grid; gap: 5px; }
+.pal-node, .pal-agent { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; cursor: pointer; border-radius: 8px; padding: 6px 9px; font: 500 0.82rem var(--font); border: 1px solid var(--line); background: var(--surface); color: var(--ink); margin-bottom: 4px; }
+.pal-node:hover, .pal-agent:hover { border-color: var(--primary); }
+.pal-node.t-input, .pal-node.t-output { background: color-mix(in srgb, var(--mint) 35%, var(--surface)); }
+.pal-node.t-umano { background: var(--yellow-soft); }
+.pal-agent .pal-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pal-agent.used { opacity: 0.75; }
+.pal-used { color: var(--green); font-weight: 700; }
+.pal-gname { font-size: 0.74rem; color: var(--muted); margin: 6px 0 3px; font-weight: 600; }
+.grafo-canvas { overflow: auto; max-height: 560px; background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 20px 20px; }
+.grafo-svg { display: block; touch-action: pan-x pan-y; user-select: none; outline: none; }
+.grafo-svg [data-node] { cursor: grab; touch-action: none; }
+.grafo-svg .node rect { fill: var(--surface); stroke: var(--primary); stroke-width: 1.5; }
+.grafo-svg .node.t-agente rect { fill: color-mix(in srgb, var(--primary) 10%, var(--surface)); }
+.grafo-svg .node.t-umano rect { fill: var(--yellow-soft); stroke: #c79a00; }
+.grafo-svg .node.t-input rect, .grafo-svg .node.t-output rect { fill: color-mix(in srgb, var(--mint) 45%, var(--surface)); stroke: var(--mint-ink); }
+.grafo-svg .node.ext rect { stroke-dasharray: 6 4; }
+.grafo-svg .node.missing rect { stroke: var(--red); stroke-dasharray: 3 3; }
+.grafo-svg .node.on rect { stroke-width: 3; filter: drop-shadow(0 2px 6px #0003); }
+.grafo-svg .n-title { font: 600 13px var(--font); fill: var(--ink); }
+.grafo-svg .n-sub { font: 500 11px var(--font); fill: var(--muted); }
+.grafo-svg .port { fill: var(--surface); stroke: var(--primary); stroke-width: 2; }
+.grafo-svg .port.out { cursor: crosshair; fill: var(--primary); }
+.grafo-svg .port.out:hover { r: 10; }
+.grafo-svg .edge-line { fill: none; stroke: var(--muted); stroke-width: 2; }
+.grafo-svg .edge.ritorno .edge-line { stroke-dasharray: 7 5; }
+.grafo-svg .edge.on .edge-line { stroke: var(--primary); stroke-width: 3; }
+.grafo-svg .edge-hit { fill: none; stroke: transparent; stroke-width: 16; cursor: pointer; }
+.grafo-svg .grafo-arrow { fill: var(--muted); }
+.grafo-svg .grafo-arrow.sel { fill: var(--primary); }
+.grafo-svg .edge-label rect { fill: var(--surface); stroke: var(--line); }
+.grafo-svg .edge-label text { font: 600 11px var(--font); fill: var(--ink); }
+.grafo-svg .grafo-temp { stroke: var(--primary); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
+.insp-head { display: grid; gap: 2px; margin: 4px 0 8px; }
+.insp-kind { font: 700 0.68rem var(--mono); text-transform: uppercase; color: var(--muted); }
+.insp-box { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; margin-bottom: 6px; }
+.insp-box b { font-size: 0.72rem; color: var(--primary); }
+.insp-box p { margin: 2px 0 0; font-size: 0.82rem; }
+.insp-compare { display: grid; gap: 4px; }
+.insp-arrow { text-align: center; color: var(--primary); font-weight: 700; }
+.insp-q { font-size: 0.82rem; font-style: italic; margin: 6px 0 10px; }
+.insp-ext { background: var(--yellow-soft); border-radius: 8px; padding: 6px 9px; }
+.grafo-inspector .field { margin-bottom: 10px; }
+.grafo-under { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 18px; padding: 4px 14px 12px; border-top: 1px solid var(--line); }
+.grafo-under .plan { margin: 10px 0; }
+.grafo-read ol, .grafo-links ul { margin: 0; padding-left: 20px; font-size: 0.85rem; }
+.grafo-links ul { list-style: none; padding: 0; }
+.grafo-links li { display: flex; align-items: center; gap: 4px; }
+.link-sel { border: 0; background: none; text-align: left; cursor: pointer; color: var(--ink); font: inherit; padding: 3px 0; flex: 1; }
+.link-sel:hover { color: var(--primary); }
+.link-add { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.link-add select { width: auto; flex: 1 1 120px; padding: 5px 26px 5px 8px; font-size: 0.82rem; }
+@media (max-width: 1180px) {
+  .grafo-main { grid-template-columns: 200px minmax(0, 1fr); }
+  .grafo-inspector { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); max-height: none; }
+}
+@media (max-width: 860px) {
+  .grafo-main, .grafo-under { grid-template-columns: minmax(0, 1fr); }
+  .grafo-palette { border-right: 0; border-bottom: 1px solid var(--line); max-height: 240px; }
+}

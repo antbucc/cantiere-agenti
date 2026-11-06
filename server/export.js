@@ -1,13 +1,23 @@
-// Export in Markdown: un capitolo per gruppo e il libro intero.
+// Export in Markdown: la parte di una Task Force e il libro intero.
+// Il libro mette in testa il catalogo di TUTTI gli agenti (Parte I) e i workflow
+// che li compongono (Parte II, con il diagramma Mermaid); poi una parte per Task
+// Force, che per agenti e workflow rimanda alle prime due.
 // Funzioni pure (nessun accesso al DB), testate in test/export.test.js.
 
 import {
   SETTORI, FIELDS, PERSONA_TIPI, MODELLI, PATTERNS, LIVELLI_UMANO, TEST_TIPI, ESITI,
   OUTPUTS, CRITERI, FASCE, SUPERVISIONE, DOMANDE_ETICA, COMPETENZE, LIVELLI_COMP,
-  SECTIONS, items, filled, planCheck, reusers, sectionLabel,
+  SECTIONS, items, filled, reusers, sectionLabel,
 } from '../public/js/model.js';
+import {
+  workflowsOf, graphCheck, buildCatalog, readingOrder, toMermaid, usedIn, isExternal,
+} from '../public/js/grafo-core.js';
 
 const NA = '—';
+
+/** Numero romano (per le parti del libro). */
+export const roman = (n) => [[1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']]
+  .reduce((acc, [v, r]) => { while (n >= v) { acc += r; n -= v; } return acc; }, '');
 
 /** Testo libero dentro una cella di tabella: niente pipe né a capo. */
 export function cell(v) {
@@ -40,25 +50,77 @@ const fieldList = (obj, defs) => defs.map((f) => `**${f.label}.** ${para(obj?.[f
 
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' }) : '');
 
+/** La scheda di un agente (catalogo): campi, origine, dove è usato, prompt e versioni. */
+function agentCardMd(a, g, H, ctx) {
+  const out = [];
+  const versioni = Array.isArray(a.versioni) ? a.versioni : [];
+  const where = usedIn(ctx.groups, g.id, a.id).map(({ group, wf }) => `«${wf.nome || 'Workflow'}»${group.id === g.id ? '' : ` (${group.name})`}`);
+  out.push(`${H} ${a.nome || 'Agente senza nome'}${a.socratico ? ' · socratico' : ''}\n`);
+  out.push(`*Task Force ${g.name}*${where.length ? ` · nei workflow: ${where.join(', ')}` : ' · non usato in nessun workflow'}\n`);
+  out.push(table(['Campo', 'Valore'], [
+    ...FIELDS.agent.map((f) => [f.label, a[f.key]]),
+    ['Modello', MODELLI[a.modello] || a.modello],
+    ['Temperatura', a.temperatura ?? ''],
+    ...(a.socratico ? [['Domande socratiche', a.domande]] : []),
+    ...(a.origine ? [['Origine', `riusato da ${a.origine.nome || 'un agente'} di «${a.origine.groupName}»`], ['Cosa abbiamo adattato', a.adattamento]] : []),
+    ...(reusers(ctx.groups, a.id).length ? [['Riusato da', reusers(ctx.groups, a.id).join(', ')]] : []),
+  ]));
+  out.push(`**Prompt** (versione corrente${versioni.length ? `, dopo v${versioni.length}` : ''})\n`, codeBlock(a.prompt));
+  if (versioni.length) {
+    out.push('**Storia delle versioni**\n');
+    versioni.forEach((v) => {
+      out.push(`- **v${v.n}** (${fmtDate(v.at)}) — ${cell(v.nota)}\n`);
+      out.push(codeBlock(v.prompt).replace(/^/gm, '  ').replace(/ +$/gm, ''));
+    });
+  }
+  return out.join('\n');
+}
+
+/** Un workflow: diagramma, come funziona, verifica, risposte alle domande del progettista. */
+function workflowMd(wf, g, H, ctx, { withGroup = false } = {}) {
+  const c = { doc: g.data, catalog: ctx.catalog, groupId: g.id };
+  const out = [];
+  out.push(`${H} ${wf.nome || 'Workflow'}${withGroup ? ` · ${g.name}` : ''}\n`);
+  out.push(`*Task Force ${g.name} · pattern: ${PATTERNS[wf.pattern] || wf.pattern || NA}*\n`);
+  if (filled(wf.motivazione)) out.push(`**Perché questo pattern.** ${wf.motivazione.trim()}\n`);
+  out.push(codeBlock(toMermaid(wf, c), 'mermaid'));
+  out.push('**Come funziona**\n');
+  const steps = readingOrder(wf, c).filter((r) => r.node.tipo !== 'output');
+  out.push(steps.length ? steps.map((r, i) => {
+    const ext = r.node.tipo === 'agente' && isExternal(r.node.agente) ? ` *(${r.sub})*` : '';
+    const who = r.node.tipo === 'umano' ? `👤 **${r.label}** — ${r.sub}` : r.node.tipo === 'input' ? `▶ **${r.label}**` : `🤖 **${r.label}**${ext}`;
+    const to = r.to.map((t) => `${t.label}${filled(t.condizione) ? ` se ${t.condizione}` : ''}${t.ritorno ? ' (ritorno)' : ''}`).join('; ');
+    return `${i + 1}. ${who}${filled(r.node.nota) ? `: ${cell(r.node.nota)}` : ''}${to ? ` → ${to}` : ''}`;
+  }).join('\n') + '\n' : '*Grafo vuoto.*\n');
+  out.push('**Verifica del grafo**\n', graphCheck(wf, c).checks.map((k) => `- ${k.ok ? '✅' : '⬜'} ${k.label}${k.detail ? ` (${k.detail})` : ''}`).join('\n') + '\n');
+  out.push(fieldList(wf, FIELDS.workflow.slice(1)));
+  if (filled(wf.passi)) out.push(`**I passi in parole.** ${wf.passi.trim()}\n`);
+  if (filled(wf.dsl)) out.push('**Configurazione del workflow**\n', codeBlock(wf.dsl));
+  if (filled(wf.screenshot)) out.push(`**Screenshot.** ${wf.screenshot.trim()}\n`);
+  return out.join('\n');
+}
+
 /**
- * Un capitolo in Markdown.
+ * La parte di una Task Force in Markdown.
  * @param group  riga del DB { name, data, ... }
- * @param opts.depth  livello del titolo (1 = "#"); i capitoli sono un livello sotto
- * @param opts.numero numero della Parte nel libro (facoltativo)
+ * @param opts.depth   livello del titolo (1 = "#"); i capitoli sono un livello sotto
+ * @param opts.numero  numero della Parte nel libro (facoltativo)
+ * @param opts.inBook  true nel libro: i capitoli 5–7 rimandano al catalogo e ai workflow
+ * @param opts.groups  tutte le Task Force (per i riferimenti al catalogo)
  */
-export function groupToMarkdown(group, { depth = 1, numero } = {}) {
+export function groupToMarkdown(group, { depth = 1, numero, inBook = false, groups = [group] } = {}) {
   const d = group.data || {};
   const H = (n) => '#'.repeat(Math.min(6, depth + n));
   const out = [];
   const push = (...s) => out.push(...s);
+  const ctx = { groups, catalog: buildCatalog(groups) };
 
   const personas = items(d.personas);
   const personaName = new Map(personas.map((p, i) => [p.id, `P${i + 1} ${p.nome || ''}`.trim()]));
   const agents = items(d.agents);
-  const agentName = new Map(agents.map((a) => [a.id, a.nome || 'Agente senza nome']));
 
   const titolo = filled(d.titolo) ? d.titolo.trim() : group.name;
-  push(`${H(0)} ${numero ? `Parte ${numero} · ` : ''}${titolo}\n`);
+  push(`${H(0)} ${numero ? `Parte ${roman(numero)} · ` : ''}${titolo}\n`);
   push(`**Task Force:** ${group.name}  \n**Settore:** ${d.settore || NA}  \n**Autori:** ${filled(d.membri) ? d.membri.trim() : NA}\n`);
   push(`> **In due frasi.** ${filled(d.sintesi) ? d.sintesi.trim().replace(/\n+/g, ' ') : NA}\n`);
 
@@ -88,53 +150,23 @@ export function groupToMarkdown(group, { depth = 1, numero } = {}) {
   push(`${H(1)} ${sectionLabel('mockup')}\n`, fieldList(d.mockup, FIELDS.mockup));
   if (filled(d.mockup?.foto)) push(`**Foto del mockup.** ${d.mockup.foto.trim()}\n`);
 
-  // 5 · Agenti
-  push(`${H(1)} ${sectionLabel('agents')}\n`);
-  if (!agents.length) push('*Nessun agente.*\n');
-  agents.forEach((a) => {
-    push(`${H(2)} ${a.nome || 'Agente senza nome'}${a.socratico ? ' · socratico' : ''}\n`);
-    push(table(['Campo', 'Valore'], [
-      ...FIELDS.agent.map((f) => [f.label, a[f.key]]),
-      ['Modello', MODELLI[a.modello] || a.modello],
-      ['Temperatura', a.temperatura ?? ''],
-      ...(a.socratico ? [['Domande socratiche', a.domande]] : []),
-      ...(a.origine ? [['Origine', `riusato da ${a.origine.nome || 'un agente'} di «${a.origine.groupName}»`], ['Cosa abbiamo adattato', a.adattamento]] : []),
-    ]));
-  });
-
-  // 6 · Prompt e versioni
-  push(`${H(1)} ${sectionLabel('prompt')}\n`);
-  agents.forEach((a) => {
-    const versioni = Array.isArray(a.versioni) ? a.versioni : [];
-    push(`${H(2)} Prompt di ${a.nome || 'agente senza nome'} (versione corrente${versioni.length ? `, dopo v${versioni.length}` : ''})\n`);
-    push(codeBlock(a.prompt));
-    if (versioni.length) {
-      push(`**Storia delle versioni**\n`);
-      versioni.forEach((v) => {
-        push(`- **v${v.n}** (${fmtDate(v.at)}) — ${cell(v.nota)}\n`);
-        push(codeBlock(v.prompt).replace(/^/gm, '  ').replace(/ +$/gm, ''));
-      });
-    }
-  });
-
-  // 7 · Workflow
-  const w = d.workflow || {};
-  const steps = items(w.steps);
-  const stepPos = new Map(steps.map((s, i) => [s.id, i + 1]));
-  push(`${H(1)} ${sectionLabel('workflow')}\n`);
-  push(`**Pattern.** ${PATTERNS[w.pattern] || para(w.pattern)}\n`);
-  push(fieldList(w, FIELDS.workflow));
-  push(`**Passi**\n`);
-  if (!steps.length) push('*Nessun passo.*\n');
-  else push(steps.map((s, i) => {
-    if (s.tipo === 'umano') return `${i + 1}. 👤 **Umano nel ciclo** — ${LIVELLI_UMANO[s.livello] || 'livello non indicato'}${filled(s.nota) ? ': ' + cell(s.nota) : ''}`;
-    const by = s.soddisfatta === 'input' ? 'input umano iniziale' : stepPos.has(s.soddisfatta) ? `passo ${stepPos.get(s.soddisfatta)}` : 'non indicato';
-    return `${i + 1}. 🤖 **${agentName.get(s.agente) || 'agente non scelto'}** — precondizioni da: ${by}${filled(s.nota) ? '. ' + cell(s.nota) : ''}`;
-  }).join('\n') + '\n');
-  push(`**Verifica del piano**\n`, planCheck(d).checks.map((c) => `- ${c.ok ? '✅' : '⬜'} ${c.label}${c.detail ? ` (${c.detail})` : ''}`).join('\n') + '\n');
-  if (filled(w.passi)) push(`**I passi in parole.** ${w.passi.trim()}\n`);
-  if (filled(w.dsl)) push(`**Configurazione del workflow**\n`, codeBlock(w.dsl));
-  if (filled(w.screenshot)) push(`**Screenshot.** ${w.screenshot.trim()}\n`);
+  // 5 · Agenti e 6 · Prompt (nel libro: rimando al catalogo della Parte I)
+  const wfs = workflowsOf(d);
+  if (inBook) {
+    push(`${H(1)} ${sectionLabel('agents')}\n`);
+    push(agents.length ? `Le schede complete sono nella **Parte I · Catalogo degli agenti**.\n\n${agents.map((a) => `- **${a.nome || 'Agente senza nome'}**${a.socratico ? ' (socratico)' : ''} — ${cell(a.ruolo)}`).join('\n')}\n` : '*Nessun agente.*\n');
+    push(`${H(1)} ${sectionLabel('prompt')}\n`, agents.length ? 'I prompt, nella versione corrente e con la storia delle versioni, sono nelle schede della **Parte I**.\n' : '*Nessun agente.*\n');
+    push(`${H(1)} ${sectionLabel('workflow')}\n`);
+    push(wfs.length ? `I diagrammi e la verifica sono nella **Parte II · I workflow**.\n\n${wfs.map((w) => `- **${w.nome || 'Workflow'}** — ${PATTERNS[w.pattern] || w.pattern || 'pattern non indicato'}`).join('\n')}\n` : '*Nessun workflow.*\n');
+  } else {
+    push(`${H(1)} ${sectionLabel('agents')}\n`);
+    if (!agents.length) push('*Nessun agente.*\n');
+    agents.forEach((a) => push(agentCardMd(a, group, H(2), ctx)));
+    push(`${H(1)} ${sectionLabel('prompt')}\n`, agents.length ? 'I prompt sono nelle schede degli agenti qui sopra, con la storia delle versioni.\n' : '*Nessun agente.*\n');
+    push(`${H(1)} ${sectionLabel('workflow')}\n`);
+    if (!wfs.length) push('*Nessun workflow.*\n');
+    wfs.forEach((wf) => push(workflowMd(wf, group, H(2), ctx)));
+  }
 
   // 8 · Test
   const tests = items(d.tests);
@@ -191,41 +223,59 @@ export function bookOrder(groups) {
 }
 
 /**
- * Il libro intero: una Parte per Task Force (raggruppate per settore), ognuna con
- * i suoi 11 capitoli; in appendice il registro degli agenti e le lezioni apprese.
+ * Il libro intero: Parte I catalogo di tutti gli agenti, Parte II i workflow,
+ * poi una parte per Task Force (in ordine di settore); appendici con registro e lezioni.
  */
 export function bookToMarkdown(groups, { titolo = 'Agenti al Lavoro · Libro dei casi d\'uso' } = {}) {
   const out = [];
   const bySettore = bookOrder(groups);
+  const ordered = bySettore.flatMap((x) => x.groups);
+  const ctx = { groups: ordered, catalog: buildCatalog(ordered) };
+  const nAgents = ordered.reduce((n, g) => n + items(g.data?.agents).length, 0);
+  const nWf = ordered.reduce((n, g) => n + workflowsOf(g.data).length, 0);
   out.push(`# ${titolo}\n`);
-  out.push(`*Generato il ${new Date().toLocaleDateString('it-IT', { dateStyle: 'long' })} · ${groups.length} parti, una per Task Force*\n`);
+  out.push(`*Generato il ${new Date().toLocaleDateString('it-IT', { dateStyle: 'long' })} · ${ordered.length} Task Force · ${nAgents} agenti · ${nWf} workflow*\n`);
 
   out.push('## Indice\n');
-  const numbered = [];
+  out.push('- Parte I · Catalogo degli agenti', '- Parte II · I workflow');
+  let n = 2;
   bySettore.forEach(({ settore, groups: gs }) => {
     out.push(`- **${settore}**`);
-    gs.forEach((g) => {
-      numbered.push(g);
-      out.push(`  - Parte ${numbered.length} · ${filled(g.data?.titolo) ? g.data.titolo.trim() : g.name} *(${g.name})*`);
-    });
+    gs.forEach((g) => { n += 1; out.push(`  - Parte ${roman(n)} · ${filled(g.data?.titolo) ? g.data.titolo.trim() : g.name} *(${g.name})*`); });
   });
   out.push('- Appendice A · Registro degli agenti', '- Appendice B · Lezioni apprese\n');
-  out.push(`Ogni parte ha gli stessi ${SECTIONS.length} capitoli: ${SECTIONS.map((s) => s.titolo).join(', ')}.\n`);
 
-  numbered.forEach((g, i) => out.push('---\n', groupToMarkdown(g, { depth: 1, numero: i + 1 })));
+  // Parte I · Catalogo degli agenti
+  out.push('---\n', '# Parte I · Catalogo degli agenti\n');
+  out.push('Tutti gli agenti progettati nel corso, raggruppati per Task Force. Ogni scheda dice dove l\'agente è usato: anche nei workflow di altre Task Force, che lo prendono dal catalogo.\n');
+  for (const g of ordered) {
+    const list = items(g.data?.agents);
+    if (!list.length) continue;
+    out.push(`## Gli agenti di «${g.name}»\n`);
+    list.forEach((a) => out.push(agentCardMd(a, g, '###', ctx)));
+  }
+
+  // Parte II · I workflow
+  out.push('---\n', '# Parte II · I workflow\n');
+  out.push('Come gli agenti sono composti in grafi: ogni freccia dice che gli effetti di un nodo coprono le precondizioni del successivo.\n');
+  for (const g of ordered) for (const wf of workflowsOf(g.data)) out.push(workflowMd(wf, g, '##', ctx, { withGroup: true }));
+
+  // Le Task Force
+  ordered.forEach((g, i) => out.push('---\n', groupToMarkdown(g, { depth: 1, numero: i + 3, inBook: true, groups: ordered })));
 
   out.push('---\n', '# Appendice A · Registro degli agenti\n');
   const rows = [];
-  for (const g of numbered) {
+  for (const g of ordered) {
     for (const a of items(g.data?.agents)) {
       rows.push([a.nome, a.ruolo, g.name, MODELLI[a.modello] || a.modello, a.socratico ? 'sì' : 'no', `${a.precond || '…'} → ${a.effetti || '…'}`,
-        a.origine ? `da ${a.origine.nome || 'agente'} di ${a.origine.groupName}` : '', reusers(groups, a.id).join(', ')]);
+        usedIn(ordered, g.id, a.id).map(({ group, wf }) => `${wf.nome || 'Workflow'}${group.id === g.id ? '' : ` (${group.name})`}`).join(', '),
+        a.origine ? `da ${a.origine.nome || 'agente'} di ${a.origine.groupName}` : '', reusers(ordered, a.id).join(', ')]);
     }
   }
-  out.push(table(['Agente', 'Ruolo', 'Task Force', 'Modello', 'Socratico', 'Precondizioni → effetti', 'Origine', 'Riusato da'], rows));
+  out.push(table(['Agente', 'Ruolo', 'Task Force', 'Modello', 'Socratico', 'Precondizioni → effetti', 'Nei workflow', 'Origine', 'Riusato da'], rows));
 
   out.push('# Appendice B · Lezioni apprese\n');
-  for (const g of numbered) {
+  for (const g of ordered) {
     const c = g.data?.competenze || {};
     out.push(`## ${g.name}\n`);
     out.push(`**Lezioni.** ${para(c.lezioni)}\n`);

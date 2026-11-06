@@ -33,7 +33,7 @@ test('verbText: il prompt resta letterale ma sicuro', () => {
   assert.equal(verbText('fine\n\\end{Verbatim}\nresto 😀'), 'fine\n\\end {Verbatim}\nresto ?');
 });
 
-test('una Task Force è una \\part con 11 capitoli e le label', () => {
+test('una Task Force è una \\part con 11 capitoli e le label; da sola contiene schede e diagrammi', () => {
   const t = groupToLatex(esempio, { slug: 'esempio' });
   assert.match(t, /\\part\[Il primo mese senza panico\]/);
   assert.match(t, /\\label\{part:esempio\}/);
@@ -42,21 +42,32 @@ test('una Task Force è una \\part con 11 capitoli e le label', () => {
     assert.match(t, new RegExp(`\\\\label\\{cap:esempio:${k}\\}`));
   }
   assert.match(t, /\\begin\{Verbatim\}\[[^\]]*breaklines[^\]]*\]\nSei lo Smistatore dello studio\./);
-  assert.match(t, /\\colorbox\{giallo!45\}\{\\textbf\{Umano nel ciclo\}\} --- È informato/);
-  assert.match(t, /\\item\[\\textcolor\{verde\}\{\\checkmark\}\] Ogni precondizione è coperta/);
+  assert.match(t, /\\begin\{tikzpicture\}/);
+  assert.match(t, /\\node\[nodo, tipo-umano\] \(n\d+\) at \([\d.-]+,[\d.-]+\) \{\\textbf\{Tutor\}/);
+  assert.match(t, /node\[etichetta-freccia\] \{procedura\}/);
+  assert.match(t, /\\colorbox\{giallo!45\}\{\\textbf\{Tutor\}\} --- È informato/);
+  assert.match(t, /\\item\[\\textcolor\{verde\}\{\\checkmark\}\] Ogni passo riceve ciò che gli serve/);
 });
 
-test('il libro: ordine per settore, appendici, rimandi al registro e alle copie', () => {
-  const copia = { ...reuseAgent({ id: 'a_risp', ...exampleDoc.agents.a_risp }, esempio), ord: 1 };
-  const altro = { id: 'g2', name: 'Le Sentinelle', data: { titolo: 'Triage', settore: 'Cura e salute', agents: { x: copia } } };
-  const files = bookProject([altro, esempio]);
-  assert.deepEqual(Object.keys(files).sort(), ['appendici.tex', 'main.tex', 'parti/01-esempio-onboarding.tex', 'parti/02-le-sentinelle.tex', 'preambolo.tex']);
-  assert.match(files['main.tex'], /\\input\{parti\/01-esempio-onboarding\}\n\\input\{parti\/02-le-sentinelle\}/);
-  assert.match(files['preambolo.tex'], /\\counterwithin\*\{chapter\}\{part\}/);
+test('il libro: catalogo, workflow, Task Force, appendici; rimandi tra schede e workflow', async () => {
+  const { EXAMPLES } = await import('../scripts/seed.js');
+  const gs = EXAMPLES.map(({ id, name, data }) => ({ id, name, data }));
+  const files = bookProject([gs[1], gs[0]]);
+  assert.deepEqual(Object.keys(files).sort(), ['appendici.tex', 'catalogo.tex', 'main.tex', 'parti/01-esempio-onboarding.tex', 'parti/02-esempio-orientamento.tex', 'preambolo.tex', 'workflow.tex']);
+  assert.match(files['main.tex'], /\\input\{catalogo\}\n\\input\{workflow\}\n\\input\{parti\/01-esempio-onboarding\}\n\\input\{parti\/02-esempio-orientamento\}/);
+  assert.match(files['catalogo.tex'], /\\part\{Catalogo degli agenti\}\\label\{part:catalogo\}/);
+  assert.match(files['catalogo.tex'], /\\section\{Smistatore\}\\label\{agente:esempio-onboarding:a-smist\}/);
+  assert.match(files['catalogo.tex'], /Nei workflow: \\hyperref\[wf:esempio-onboarding:w-onb\]\{Domande dei nuovi assunti\}, \\hyperref\[wf:esempio-orientamento:w-registro\]\{Registro settimanale delle domande \(Esempio \\textperiodcentered\{\} Orientamento\)\}/);
+  assert.match(files['workflow.tex'], /\\part\{I workflow\}\\label\{part:workflow\}/);
+  assert.match(files['workflow.tex'], /\\chapter\{Registro settimanale delle domande \\textperiodcentered\{\} Esempio \\textperiodcentered\{\} Orientamento\}\\label\{wf:esempio-orientamento:w-registro\}/);
+  // l'agente preso dal catalogo: nodo tratteggiato e rimando alla scheda originale
+  assert.match(files['workflow.tex'], /\\node\[nodo, tipo-agente, esterno\]/);
+  assert.match(files['workflow.tex'], /\\item \\textbf\{\\hyperref\[agente:esempio-onboarding:a-reg\]\{Registratore\}\} \\textit\{\(dal catalogo/);
+  assert.match(files['workflow.tex'], /\\draw\[freccia, dashed\] \(n\d+\.north\) to\[out=90, in=90/, 'freccia di ritorno del critico');
+  assert.match(files['parti/02-esempio-orientamento.tex'], /Le schede complete, con prompt e versioni, sono nella Parte~\\ref\{part:catalogo\}/);
+  assert.doesNotMatch(files['parti/02-esempio-orientamento.tex'], /tikzpicture/);
   assert.match(files['appendici.tex'], /\\appendix/);
   assert.match(files['appendici.tex'], /\\hyperref\[agente:esempio-onboarding:a-smist\]\{\\textbf\{Smistatore\}\}/);
-  // la copia rimanda all'agente originale
-  assert.match(files['parti/02-le-sentinelle.tex'], /Riusato da \\hyperref\[agente:esempio-onboarding:a-risp\]/);
   const one = singleFile(files);
   assert.doesNotMatch(one, /\\input\{/);
   assert.match(one, /\\documentclass/);

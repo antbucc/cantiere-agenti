@@ -1,5 +1,7 @@
 // Modello dati condiviso tra server (export, seed) e browser (UI, completamento).
-// Nessuna dipendenza: è un modulo ES puro.
+// Modulo ES puro; i workflow a grafo sono in grafo-core.js.
+
+import { workflowsOf, graphCheck, unusedAgents, WORKFLOW_FIELDS } from './grafo-core.js';
 
 export const SETTORI = [
   'Amministrazione e servizi',
@@ -205,7 +207,6 @@ const PERSONA_KEYS = ['nome', 'tipo', 'giornata', 'obiettivi', 'frustrazioni', '
 const STORY_KEYS = ['persona', 'voglio', 'per', 'dato', 'quando', 'allora'];
 const MOCKUP_KEYS = ['prima', 'durante', 'dopo', 'ai', 'socratico', 'approva', 'supervisore', 'errore'];
 const AGENT_KEYS = ['nome', 'ruolo', 'obiettivo', 'precond', 'effetti', 'regole', 'strumenti', 'umano', 'modello'];
-const WORKFLOW_KEYS = ['pattern', 'motivazione', 'alternativa', 'ultimo', 'togliere', 'nonso', 'approvazione'];
 const TEST_KEYS = ['input', 'atteso', 'ottenuto', 'esito'];
 const ANALISI_OUT_KEYS = ['caso', ...CRITERI.map((c) => c.key)];
 const COMP_KEYS = ['prima', 'livello', 'dove', 'prova'];
@@ -270,11 +271,22 @@ const SCORERS = {
     };
   },
   workflow(doc) {
-    const plan = planCheck(doc);
-    const w = plan.checks.filter((c) => !c.ok).map((c) => `Verifica del piano: ${c.label.toLowerCase()} — non ancora.${c.detail ? ' ' + c.detail + '.' : ''}`);
-    const missing = WORKFLOW_KEYS.filter((k) => !filled(doc.workflow?.[k])).length;
-    if (missing) w.push(`${missing} domande sul workflow senza risposta.`);
-    return { checks: [ratio(doc.workflow, WORKFLOW_KEYS), plan.checks.filter((c) => c.ok).length / plan.checks.length], warnings: w };
+    const wfs = workflowsOf(doc);
+    if (!wfs.length) return { checks: [0], warnings: ['Create il primo workflow: componete gli agenti in un grafo.'] };
+    const w = [];
+    const checks = [];
+    for (const wf of wfs) {
+      const n = wf.nome || 'Workflow';
+      const g = graphCheck(wf, { doc });
+      for (const c of g.checks.filter((x) => !x.ok)) w.push(`«${n}»: ${c.label.toLowerCase()} — non ancora.${c.detail ? ' ' + c.detail + '.' : ''}`);
+      const missing = WORKFLOW_FIELDS.filter((k) => !filled(wf[k])).length;
+      if (missing) w.push(`«${n}»: ${missing} domande sul workflow senza risposta.`);
+      checks.push(filled(wf.nome) ? 1 : 0, ratio(wf, WORKFLOW_FIELDS), g.checks.filter((c) => c.ok).length / g.checks.length);
+    }
+    const unused = unusedAgents(doc);
+    if (unused.length) w.push(`Agenti non usati in nessun workflow: ${unused.map((a) => a.nome || 'senza nome').join(', ')}.`);
+    checks.push(unused.length ? 0 : 1);
+    return { checks, warnings: w };
   },
   tests(doc) {
     const list = items(doc.tests);

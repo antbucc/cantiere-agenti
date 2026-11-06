@@ -7,8 +7,10 @@ import { h, field, select, checkbox, live, warnings, dialog, toast } from './ui.
 import {
   SECTIONS, SETTORI, FIELDS, PERSONA_TIPI, MODELLI, PATTERNS, LIVELLI_UMANO, TEST_TIPI, TEST_QUOTE,
   ESITI, OUTPUTS, CRITERI, FASCE, SUPERVISIONE, DOMANDE_ETICA, COMPETENZE, LIVELLI_COMP,
-  items, newId, nextOrd, filled, planCheck, sectionStatus, reuseAgent, reusers,
+  items, newId, nextOrd, filled, sectionStatus, reuseAgent, reusers,
 } from './model.js';
+import { workflowsOf } from './grafo-core.js';
+import { grafoEditor } from './grafo.js';
 
 let rerender = () => {};
 export function setRerender(fn) { rerender = fn; }
@@ -24,7 +26,7 @@ export function structureSignature(doc) {
     pick(doc?.personas, ['aiDraft']),
     pick(doc?.stories, ['aiDraft']),
     items(doc?.agents).map((a) => [a.id, a.ord, a.socratico, a.versioni?.length || 0]),
-    pick(doc?.workflow?.steps, ['tipo']),
+    pick(doc?.workflows), // i nodi e le frecce li ridisegna il compositore da solo
     pick(doc?.tests),
   ]);
 }
@@ -358,58 +360,64 @@ function prompt() {
 // Capitolo 7 · Workflow
 // ---------------------------------------------------------------------------
 
+let currentWf = null; // workflow aperto nel compositore
+
+function addWorkflow() {
+  const id = newId('w');
+  const n = items(store.get('workflows')).length + 1;
+  store.set(['workflows', id], {
+    nome: n === 1 ? 'Workflow principale' : `Workflow ${n}`, ord: nextOrd(store.get('workflows')), deleted: false,
+    nodes: {
+      [newId('n')]: { tipo: 'input', etichetta: 'Ingresso', x: 30, y: 140, ord: 1, deleted: false },
+      [newId('n')]: { tipo: 'output', etichetta: 'Uscita', x: 750, y: 140, ord: 2, deleted: false },
+    },
+    edges: {},
+  });
+  currentWf = id;
+  rerender();
+}
+
 function workflow() {
-  const steps = items(store.get('workflow.steps'));
-  const stepsPath = ['workflow', 'steps'];
-  const stepLabel = (s, i) => (s.tipo === 'umano' ? `Passo ${i + 1} · umano` : `Passo ${i + 1} · ${store.get(['agents', s.agente, 'nome']) || 'agente'}`);
-  return frame('workflow', [
-    'Scegliete un pattern: <b>pipeline</b> (in fila), <b>router</b> (smista), <b>produttore e critico</b>, o una combinazione.',
-    'Mettete in fila i passi. Per ogni agente indicate chi soddisfa le sue precondizioni: l\'input iniziale o un passo precedente.',
-    "Inserite almeno un passo con l'<b>umano nel ciclo</b> e dite se è informato, approva o decide.",
-    'La <b>verifica del piano</b> si aggiorna da sola: deve essere tutta verde prima dei test.',
-  ],
-  h('div', { class: 'grid2' },
-    select(['workflow', 'pattern'], PATTERNS, { label: 'Pattern' }),
-    field(['workflow', 'motivazione'], { label: 'Perché questo pattern', ph: FIELDS.workflow[0].ph })),
-  sub('I passi', 'dall\'alto in basso, nell\'ordine in cui avvengono'),
-  h('ol', { class: 'steps' }, steps.map((s, i) => {
-    const base = [...stepsPath, s.id];
-    const isHuman = s.tipo === 'umano';
-    const prevOptions = () => {
-      const now = items(store.get('workflow.steps'));
-      const idx = now.findIndex((x) => x.id === s.id);
-      return { input: 'Input umano iniziale', ...Object.fromEntries(now.slice(0, Math.max(0, idx)).map((x, k) => [x.id, stepLabel(x, k)])) };
-    };
-    return h('li', { class: 'step ' + (isHuman ? 'human' : 'agent'), dataset: { item: s.id } },
-      h('span', { class: 'step-num' }, String(i + 1)),
-      h('div', { class: 'step-body' },
-        h('div', { class: 'seg' },
-          ['agente', 'umano'].map((t) => h('button', { class: s.tipo === t ? 'on' : '', type: 'button',
-            onclick: () => { store.set([...base, 'tipo'], t); rerender(); } }, t === 'agente' ? '🤖 Agente' : '👤 Umano nel ciclo'))),
-        isHuman
-          ? h('div', { class: 'grid2' },
-            select([...base, 'livello'], LIVELLI_UMANO, { label: "L'umano…" }),
-            field([...base, 'nota'], { label: 'Chi e cosa fa', ph: 'Es. la tutor legge la sintesi e la conferma', rows: 1 }))
-          : h('div', { class: 'grid3' },
-            select([...base, 'agente'], agentOptions, { label: 'Agente' }),
-            select([...base, 'soddisfatta'], prevOptions, { label: 'Precondizioni soddisfatte da…' }),
-            field([...base, 'nota'], { label: 'Nota', ph: 'Cosa passa al passo successivo', rows: 1 }))),
-      itemTools(stepsPath, s.id, 'questo passo'));
-  })),
-  h('div', { class: 'row' },
-    h('button', { class: 'btn add', onclick: () => addItem(stepsPath, 'w', { tipo: 'agente', agente: '', soddisfatta: steps.length ? '' : 'input' }) }, '+ Passo agente'),
-    h('button', { class: 'btn add human', onclick: () => addItem(stepsPath, 'w', { tipo: 'umano', livello: '' }) }, '+ Passo umano')),
-  live(() => {
-    const plan = planCheck(store.state.doc);
-    return h('div', { class: 'plan ' + (plan.ok ? 'ok' : '') },
-      h('h3', {}, 'Verifica del piano'),
-      h('ul', {}, plan.checks.map((c) => h('li', { class: c.ok ? 'ok' : 'ko' }, h('span', { class: 'mark' }, c.ok ? '✓' : '✕'), c.label, c.detail ? h('small', {}, ' — ' + c.detail) : null))));
-  }),
-  sub('Le domande del progettista'),
-  fieldsOf(['workflow'], FIELDS.workflow.slice(1)),
-  field(['workflow', 'passi'], { label: 'I passi in parole', ph: 'Raccontate il flusso come una storia: arriva…, poi…, infine…' }),
-  field(['workflow', 'dsl'], { label: 'Configurazione o DSL del workflow', ph: 'Incollate qui la definizione esportata dalla piattaforma (YAML, JSON, …)', mono: true, rows: 4 }),
-  field(['workflow', 'screenshot'], { label: 'Screenshot', ph: 'Link allo screenshot del workflow nella piattaforma', multiline: false }));
+  const doc = store.state.doc;
+  // il vecchio workflow lineare diventa un grafo (una volta sola: id fisso, quindi niente doppioni)
+  if (!items(doc.workflows).length) {
+    const legacy = workflowsOf(doc)[0];
+    if (legacy?.legacy) { const { legacy: _, id, ...wf } = legacy; store.set(['workflows', id], wf); }
+  }
+  const wfs = workflowsOf(store.state.doc);
+  if (!wfs.some((w) => w.id === currentWf)) currentWf = wfs[0]?.id || null;
+  const todo = [
+    'Componete gli agenti in un <b>grafo</b>: ingresso, agenti, <b>umano nel ciclo</b>, uscita. Potete usare anche agenti di altre Task Force, dal catalogo.',
+    'Ogni freccia dice: <i>gli effetti di questo nodo soddisfano le precondizioni del successivo</i>. Cliccatela per controllarlo.',
+    'Un <b>router</b> ha più frecce in uscita, ognuna con la sua condizione; il <b>critico</b> che rimanda indietro usa una freccia di ritorno.',
+    'Potete avere più workflow (es. uno per tipo di richiesta). La <b>verifica del grafo</b> deve essere tutta verde prima dei test.',
+  ];
+  const tabs = h('div', { class: 'wf-tabs', role: 'tablist' },
+    wfs.map((w) => h('button', { type: 'button', role: 'tab', class: `wf-tab${w.id === currentWf ? ' on' : ''}`, 'aria-selected': w.id === currentWf,
+      onclick: () => { currentWf = w.id; rerender(); } }, w.nome || 'Workflow senza nome')),
+    h('button', { type: 'button', class: 'btn add small-btn', onclick: addWorkflow }, '+ Nuovo workflow'));
+  if (!currentWf) {
+    return frame('workflow', todo,
+      live(() => warnings(sectionStatus('workflow', store.state.doc).warnings)),
+      tabs,
+      h('p', { class: 'empty' }, 'Nessun workflow ancora: create il primo e componete gli agenti del Capitolo 5.'));
+  }
+  const base = ['workflows', currentWf];
+  return frame('workflow', todo,
+    live(() => warnings(sectionStatus('workflow', store.state.doc).warnings, 'Workflow completi e verifiche tutte verdi.')),
+    tabs,
+    h('div', { class: 'grid2' },
+      field([...base, 'nome'], { label: 'Nome del workflow', ph: 'Es. Risposte alle richieste di informazioni', multiline: false }),
+      select([...base, 'pattern'], PATTERNS, { label: 'Pattern' })),
+    field([...base, 'motivazione'], { label: 'Perché questo pattern', ph: FIELDS.workflow[0].ph }),
+    sub('Il grafo', 'trascinate i nodi; collegate dal pallino a destra di un nodo'),
+    grafoEditor(currentWf),
+    sub('Le domande del progettista'),
+    fieldsOf(base, FIELDS.workflow.slice(1)),
+    field([...base, 'passi'], { label: 'I passi in parole (facoltativo)', ph: 'Raccontate il flusso come una storia: arriva…, poi…, infine…' }),
+    field([...base, 'dsl'], { label: 'Configurazione o DSL del workflow', ph: 'Incollate qui la definizione esportata dalla piattaforma (YAML, JSON, …)', mono: true, rows: 4 }),
+    field([...base, 'screenshot'], { label: 'Screenshot', ph: 'Link allo screenshot del workflow nella piattaforma', multiline: false }),
+    h('div', { class: 'row' }, h('button', { class: 'btn ghost danger', type: 'button', onclick: () => removeItem(['workflows'], currentWf, 'questo workflow') }, 'Elimina questo workflow')));
 }
 
 // ---------------------------------------------------------------------------

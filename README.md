@@ -171,9 +171,16 @@ Anche l'export Markdown del libro intero è un buon backup leggibile: scaricatel
 
 ## Esportare: PDF, LaTeX per Overleaf, Markdown
 
-Nel libro ogni Task Force è una **Parte**, con gli stessi 11 **capitoli** del percorso (Capitolo 1 · Scenario …
-Capitolo 11 · Competenze e lezioni), numerati da 1 in ogni parte. Le parti sono in ordine di settore; in appendice
-ci sono il *Registro degli agenti* (A) e le *Lezioni apprese* (B).
+Il libro mette in testa **agenti e workflow**:
+
+| Parte | Contenuto |
+| --- | --- |
+| **I · Catalogo degli agenti** | Una scheda per ogni agente di ogni Task Force: ruolo, precondizioni, effetti, regole, modello, prompt corrente e storia delle versioni; in quali workflow è usato (anche da altre Task Force) |
+| **II · I workflow** | Un capitolo per workflow: diagramma (TikZ nel PDF, Mermaid nel Markdown), come funziona passo per passo con i rimandi alle schede, verifica del grafo, risposte alle domande del progettista |
+| **III, IV, … · Le Task Force** | Una parte per Task Force, in ordine di settore, con gli stessi 11 capitoli del percorso; i capitoli 5–7 rimandano alle Parti I e II invece di ripeterli |
+| **Appendici** | A · Registro di tutti gli agenti (con i workflow in cui compaiono) · B · Lezioni apprese |
+
+L'export della **singola Task Force** è invece autonomo: i capitoli 5–7 contengono le schede, i prompt e i diagrammi.
 
 Dalla pagina **Esporta**, per la vostra parte e (con il codice docente) per il libro intero:
 
@@ -187,13 +194,15 @@ Dalla pagina **Esporta**, per la vostra parte e (con il codice docente) per il l
 
 Note sul LaTeX:
 
-- **Etichette per i rimandi:** `part:<task-force>`, `cap:<task-force>:<capitolo>` (es. `cap:esempio-onboarding:workflow`),
-  `agente:<task-force>:<id>`, `persona:<task-force>:<id>`, `app:registro`, `app:lezioni`.
-  Nel registro, il nome di ogni agente rimanda alla sua scheda, e le copie riusate rimandano all'originale.
+- **Etichette per i rimandi:** `part:catalogo`, `part:workflow`, `part:<task-force>`, `cap:<task-force>:<capitolo>`,
+  `agente:<task-force>:<id>`, `wf:<task-force>:<id>`, `persona:<task-force>:<id>`, `app:registro`, `app:lezioni`.
+  Le schede rimandano ai workflow in cui compaiono, i workflow rimandano alle schede, il registro alle schede.
+- **Diagrammi:** TikZ, con le posizioni prese dal compositore; i nodi tratteggiati sono agenti presi dal catalogo di
+  un'altra Task Force, le frecce tratteggiate sono frecce di ritorno.
 - **Testo libero:** viene convertito in LaTeX sicuro (`% & _ # { } \`, virgolette, frecce…). Le emoji vengono tolte,
   perché pdfLaTeX si fermerebbe davanti a caratteri che non conosce.
 - **Prompt:** sono in blocchi `Verbatim` che vanno a capo da soli (pacchetto `fvextra`).
-- **Pacchetti usati:** tutti standard e presenti su Overleaf (`xltabular`, `fvextra`, `tcolorbox`, `titlesec`, `enumitem`, `hyperref`).
+- **Pacchetti usati:** tutti standard e presenti su Overleaf (`xltabular`, `fvextra`, `tcolorbox`, `tikz`, `titlesec`, `enumitem`, `hyperref`).
   Si compila anche con XeLaTeX e LuaLaTeX.
 
 Senza TeX Live sul server il pulsante PDF non compare: si usa il progetto Overleaf.
@@ -296,6 +305,26 @@ oppure Ollama (o vLLM) su un server con GPU: basta cambiare `AI_BASE_URL`.
 | `SOCRATICO_CTX` | `4096` | Contesto del modello in token. I turni vecchi vengono scartati per restarci dentro, le regole mai |
 | `BOZZE_AI` | `on` | `off` spegne «Bozza con AI» su personas e storie |
 
+## Capitolo 7 · Il compositore a grafo
+
+I workflow si **disegnano**: nel Capitolo 7 c'è una tela con
+
+- **tavolozza** a sinistra: ingresso, umano nel ciclo, uscita, gli agenti della Task Force e quelli **dal catalogo** delle altre
+  Task Force (con ricerca). Un agente dal catalogo è usato *per riferimento*: nel grafo ha il bordo tratteggiato e, se il suo
+  gruppo lo modifica, cambia anche qui. Per adattarlo lo si copia nel Capitolo 5;
+- **tela** al centro: i nodi si trascinano; si collegano trascinando dal pallino a destra di un nodo fino al nodo successivo.
+  Una freccia da A a B significa *gli effetti di A soddisfano le precondizioni di B*. Pulsanti «Disponi automaticamente»,
+  «Adatta», zoom; il tasto Canc elimina ciò che è selezionato;
+- **ispettore** a destra: cliccando una freccia mette fianco a fianco gli effetti del nodo di partenza e le precondizioni di
+  quello d'arrivo («gli effetti coprono le precondizioni?»), e permette di dare una **condizione** (router) o di segnarla
+  come **ritorno** (il critico che rimanda al produttore);
+- sotto: la **verifica del grafo** (ingresso e uscita, ogni passo raggiunto dall'ingresso, almeno un umano, nessun ciclo
+  nascosto, condizioni sulle uscite dei router, agenti esistenti), il **workflow in parole** e l'**elenco dei collegamenti**
+  con i menu, per chi usa tastiera, telefono o lettore di schermo.
+
+Ogni Task Force può avere **più workflow**. I workflow scritti con la versione precedente (elenco di passi) vengono
+convertiti in grafo da soli, la prima volta che si apre il capitolo. Il Registro mostra in quali workflow compare ogni agente.
+
 ## Riusare gli agenti di altre Task Force
 
 Mentre lavorano, i gruppi possono riusare gli agenti degli altri:
@@ -345,6 +374,8 @@ public/
   js/sections.js  i capitoli 1–11
   js/pages.js     Task Force, Verifica, Lavagna, Registro, Esporta
   js/guida.js     schede dei campi, glossario del corso, percorso guidato (condiviso con il server)
+  js/grafo-core.js workflow a grafo: conversione, verifica, disposizione, Mermaid (condiviso con il server)
+  js/grafo.js     compositore a grafo del Capitolo 7
   js/socratico.js pannello della guida socratica
   js/app.js       router, barra in alto, menu, login, eventi
 scripts/seed.js   Task Force di esempio (scripts/esempi/ per l'esempio completo)

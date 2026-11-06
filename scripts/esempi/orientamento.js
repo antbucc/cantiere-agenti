@@ -6,7 +6,10 @@
 // nelle proporzioni giuste, la checklist etica completa e una fascia AI Act discussa
 // al confine con l'"alto rischio" (orientamento e accesso all'istruzione).
 
+import { layout } from '../../public/js/grafo-core.js';
+
 const at = (d) => new Date(d).toISOString();
+const layoutAll = (wfs) => Object.fromEntries(Object.entries(wfs).map(([id, wf]) => [id, Object.values(wf.nodes).every((n) => n.x !== undefined) ? wf : layout(wf)]));
 
 export const orientamentoDoc = {
   titolo: 'Lo sportello che fa domande',
@@ -149,26 +152,64 @@ export const orientamentoDoc = {
       ],
     },
   },
-  workflow: {
-    pattern: 'combinazione',
-    motivazione: "Le richieste sono di tipo diverso (router all'ingresso), e quelle informative devono essere giuste al 100% (produttore e critico: l'Informatore scrive, il Critico controlla).",
-    alternativa: "Un solo agente che risponde a tutto: scartato perché mescolerebbe informazioni, consigli e soldi, e non avremmo un punto di controllo prima dell'invio.",
-    ultimo: "Sulle informazioni pubbliche, il Critico decide se la risposta parte; su costi e borse la segreteria; sul percorso la persona stessa, nel colloquio con Laura.",
-    togliere: "Abbiamo provato a togliere il Critico: nei test 2 risposte su 12 avevano una data sbagliata. Lo teniamo. L'Accoglienza potrebbe diventare un modulo con un menu a tendina, ma le persone non scelgono bene la categoria.",
-    nonso: "L'Informatore scrive «non è nella scheda: ti risponderà la segreteria» e la richiesta va in coda umana; l'Orientatore propone il colloquio.",
-    approvazione: "Ogni risposta con importi, borse o esenzioni, e ogni riassunto di orientamento (approvato prima dalla persona, poi letto da Laura).",
-    passi: "Arriva la richiesta → l'Accoglienza la classifica e la ripulisce → se è informativa, l'Informatore scrive la bozza e il Critico la confronta con la scheda; le risposte approvate partono, le altre vanno in coda alla segreteria che approva o corregge → se è di orientamento, l'Orientatore fa le sue domande e prepara il riassunto → Laura riceve il riassunto e decide il colloquio con la persona.",
-    dsl: "flow: sportello_orientamento\nsteps:\n  - accoglienza: { in: richiesta }\n  - route: accoglienza.categoria\n      informazione:\n        - informatore: { in: [richiesta, scheda] }\n        - critico: { in: [informatore.bozza, scheda] }\n        - if critico.esito != approvata: segreteria_umano   # approva\n      orientamento:\n        - orientatore: { in: richiesta, max_turni: 3 }\n        - orientatrice_umano                                 # decide\n      costi | reclamo | altro: segreteria_umano",
-    screenshot: 'Screenshot del flusso nella piattaforma (cartella condivisa del corso, workflow.png)',
-    steps: {
-      w_1: { ord: 1, tipo: 'agente', agente: 'a_acc', soddisfatta: 'input', nota: 'Etichetta, corso citato e testo ripulito' },
-      w_2: { ord: 2, tipo: 'agente', agente: 'a_info', soddisfatta: 'w_1', nota: 'Solo richieste «informazione»: bozza con fonte' },
-      w_3: { ord: 3, tipo: 'agente', agente: 'a_crit', soddisfatta: 'w_2', nota: 'Confronto con la scheda: approvata, da correggere o da approvare' },
-      w_4: { ord: 4, tipo: 'umano', livello: 'approva', nota: 'La segreteria approva o corregge le risposte segnalate dal Critico e tutte quelle su costi e borse' },
-      w_5: { ord: 5, tipo: 'agente', agente: 'a_ori', soddisfatta: 'w_1', nota: 'Solo richieste «orientamento»: domande e riassunto approvato dalla persona' },
-      w_6: { ord: 6, tipo: 'umano', livello: 'decide', nota: "L'orientatrice legge il riassunto e decide con la persona nel colloquio" },
+  workflows: layoutAll({
+    w_sportello: {
+      ord: 1, nome: 'Sportello informazioni e orientamento', pattern: 'combinazione',
+      motivazione: "Le richieste sono di tipo diverso (router all'ingresso), e quelle informative devono essere giuste al 100% (produttore e critico: l'Informatore scrive, il Critico controlla e, se serve, rimanda indietro).",
+      alternativa: "Un solo agente che risponde a tutto: scartato perché mescolerebbe informazioni, consigli e soldi, e non avremmo un punto di controllo prima dell'invio.",
+      ultimo: "Sulle informazioni pubbliche il Critico decide se la risposta parte; su costi e borse la segreteria; sul percorso la persona stessa, nel colloquio con l'orientatrice.",
+      togliere: "Abbiamo provato a togliere il Critico: nei test 2 risposte su 12 avevano una data sbagliata. Lo teniamo. L'Accoglienza potrebbe diventare un menu a tendina, ma le persone non scelgono bene la categoria.",
+      nonso: "L'Informatore scrive «non è nella scheda: ti risponderà la segreteria» e la richiesta va in coda umana; l'Orientatore propone il colloquio.",
+      approvazione: "Ogni risposta con importi, borse o esenzioni, e ogni riassunto di orientamento (approvato prima dalla persona, poi letto dall'orientatrice).",
+      passi: '',
+      dsl: "flow: sportello_orientamento\nsteps:\n  - accoglienza: { in: richiesta }\n  - route: accoglienza.categoria\n      informazione:\n        - informatore: { in: [richiesta, scheda] }\n        - critico: { in: [informatore.bozza, scheda] }\n        - if critico.esito == da_correggere: informatore   # ritorno\n        - if critico.esito == da_approvare: segreteria_umano\n      orientamento:\n        - orientatore: { in: richiesta, max_turni: 3 }\n        - orientatrice_umano\n      costi | reclamo | altro: segreteria_umano",
+      screenshot: 'Screenshot del flusso nella piattaforma (cartella condivisa del corso, workflow.png)',
+      nodes: {
+        n_in: { x: 30, y: 200, ord: 1, tipo: 'input', etichetta: 'Richiesta della persona' },
+        n_acc: { x: 270, y: 200, ord: 2, tipo: 'agente', agente: 'a_acc', nota: 'Categoria e testo ripulito' },
+        n_info: { x: 510, y: 60, ord: 3, tipo: 'agente', agente: 'a_info', nota: 'Bozza con la fonte' },
+        n_crit: { x: 750, y: 60, ord: 4, tipo: 'agente', agente: 'a_crit', nota: 'Confronto con la scheda' },
+        n_seg: { x: 750, y: 200, ord: 5, tipo: 'umano', etichetta: 'Segreteria', livello: 'approva', nota: 'Approva o corregge, entro 2 giorni lavorativi' },
+        n_ori: { x: 510, y: 340, ord: 6, tipo: 'agente', agente: 'a_ori', nota: 'Al massimo tre domande, poi il riassunto' },
+        n_orient: { x: 750, y: 340, ord: 7, tipo: 'umano', etichetta: 'Orientatrice', livello: 'decide', nota: 'Legge il riassunto e decide con la persona nel colloquio' },
+        n_out: { x: 990, y: 200, ord: 8, tipo: 'output', etichetta: 'Risposta o colloquio' },
+      },
+      edges: {
+        e1: { ord: 1, da: 'n_in', a: 'n_acc' },
+        e2: { ord: 2, da: 'n_acc', a: 'n_info', condizione: 'informazione' },
+        e3: { ord: 3, da: 'n_acc', a: 'n_ori', condizione: 'orientamento' },
+        e4: { ord: 4, da: 'n_acc', a: 'n_seg', condizione: 'costi, reclamo, altro' },
+        e5: { ord: 5, da: 'n_info', a: 'n_crit' },
+        e6: { ord: 6, da: 'n_crit', a: 'n_out', condizione: 'approvata' },
+        e7: { ord: 7, da: 'n_crit', a: 'n_seg', condizione: 'da approvare' },
+        e8: { ord: 8, da: 'n_crit', a: 'n_info', condizione: 'da correggere', ritorno: true },
+        e9: { ord: 9, da: 'n_seg', a: 'n_out' },
+        e10: { ord: 10, da: 'n_ori', a: 'n_orient' },
+        e11: { ord: 11, da: 'n_orient', a: 'n_out' },
+      },
     },
-  },
+    w_registro: {
+      ord: 2, nome: 'Registro settimanale delle domande', pattern: 'pipeline',
+      motivazione: "Ogni settimana la direzione vuole sapere su cosa le persone si bloccano. Il Registratore della Task Force «Onboarding» fa già esattamente questo: lo usiamo dal catalogo, senza copiarlo.",
+      alternativa: "Scrivere un nostro agente: scartato, sarebbe stato una copia peggiore di uno già testato da un'altra Task Force.",
+      ultimo: 'La direzione, che legge il report e decide se aggiornare le schede dei corsi.',
+      togliere: 'Niente: è già il minimo (un agente e una persona).',
+      nonso: 'Se una richiesta non ha un tema chiaro, il Registratore la segna come «altro» e la direzione la legge per intero.',
+      approvazione: 'Nessuna approvazione: la direzione è informata e decide lei cosa fare del report.',
+      dsl: '', screenshot: '',
+      nodes: {
+        n_in: { x: 30, y: 60, ord: 1, tipo: 'input', etichetta: 'Richieste chiuse della settimana' },
+        n_reg: { x: 270, y: 60, ord: 2, tipo: 'agente', agente: 'esempio-onboarding/a_reg', nota: 'Tema ed esito di ogni richiesta, senza dati personali' },
+        n_dir: { x: 510, y: 60, ord: 3, tipo: 'umano', etichetta: 'Direzione', livello: 'informato', nota: 'Legge il report il lunedì' },
+        n_out: { x: 750, y: 60, ord: 4, tipo: 'output', etichetta: 'Report settimanale' },
+      },
+      edges: {
+        e1: { ord: 1, da: 'n_in', a: 'n_reg' },
+        e2: { ord: 2, da: 'n_reg', a: 'n_dir' },
+        e3: { ord: 3, da: 'n_dir', a: 'n_out' },
+      },
+    },
+  }),
   tests: {
     t_1: { ord: 1, tipo: 'tipico', input: 'Quando inizia il corso di magazziniere e che orari ha?', atteso: 'Date e orari dalla scheda LOG-02, con fonte', ottenuto: 'Date e orari corretti, fonte citata', esito: 'passato', chiamate: 3, note: '' },
     t_2: { ord: 2, tipo: 'tipico', input: 'Che documenti servono per iscriversi al corso di aiuto cuoco?', atteso: 'Elenco documenti dalla scheda RIS-01', ottenuto: 'Elenco completo e link al modulo', esito: 'passato', chiamate: 3, note: '' },

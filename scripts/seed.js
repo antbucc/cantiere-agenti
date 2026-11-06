@@ -6,6 +6,10 @@
 
 import 'dotenv/config';
 import { openDb, defaultDbFile } from '../server/db.js';
+import { layout } from '../public/js/grafo-core.js';
+
+/** Dispone automaticamente i nodi di ogni workflow d'esempio. */
+export const layoutAll = (wfs) => Object.fromEntries(Object.entries(wfs).map(([id, wf]) => [id, Object.values(wf.nodes).every((n) => n.x !== undefined) ? wf : layout(wf)]));
 import { orientamentoDoc, orientamentoBoard } from './esempi/orientamento.js';
 
 const DB_FILE = defaultDbFile();
@@ -59,24 +63,37 @@ export const exampleDoc = {
     ] },
     a_reg: { ord: 3, nome: 'Registratore', ruolo: 'Annota ogni domanda (senza dati personali), l\'esito e le procedure mancanti per la tutor.', obiettivo: 'Dare alla tutor il quadro settimanale delle lacune del wiki.', precond: 'L\'esito dello scambio (risolto | esperto | non trovato) e la domanda ripulita.', effetti: 'Una riga nel registro con tema, esito e pagina del wiki (se c\'è).', regole: 'Non salva mai il testo originale della domanda.', strumenti: 'Foglio del registro (scrittura).', umano: 'Nessun passaggio: il registro lo legge la tutor.', modello: 'piccolo', temperatura: 0, socratico: false, prompt: 'Ricevi la domanda ripulita e l\'esito. Assegna un tema (max 3 parole) e scrivi una riga JSON: {"tema": "...", "esito": "...", "pagina_wiki": "..." | null}.', versioni: [] },
   },
-  workflow: {
-    pattern: 'router',
-    motivazione: 'Le domande sono di tipo molto diverso: una sola via per tutte farebbe rispondere l\'AI anche su casi di clienti.',
-    alternativa: 'Pipeline lineare: scartata perché tutte le domande passerebbero dal Risponditore, comprese quelle che non deve toccare.',
-    ultimo: 'Sulle procedure il nuovo assunto, con la fonte davanti; sui casi dei clienti sempre un esperto.',
-    togliere: 'Il Registratore potrebbe essere un semplice modulo senza AI: lo teniamo solo per assegnare il tema.',
-    nonso: 'Il Risponditore dichiara "non trovo" e la domanda va a un esperto; il Registratore la segna come lacuna del wiki.',
-    approvazione: 'Ogni venerdì la tutor approva le modifiche al wiki proposte dal registro.',
-    passi: 'Arriva la domanda → lo Smistatore la classifica e la ripulisce → se è una procedura il Risponditore guida la persona → il Registratore annota → la tutor legge il registro ogni venerdì.',
-    dsl: 'flow: onboarding\nsteps:\n  - smistatore: { in: domanda }\n  - route:\n      procedura: risponditore\n      cliente: esperto_umano\n  - registratore: { in: esito }\n  - tutor: { livello: informato, quando: venerdi }',
-    screenshot: '',
-    steps: {
-      w_1: { ord: 1, tipo: 'agente', agente: 'a_smist', soddisfatta: 'input', nota: 'Etichetta e domanda ripulita' },
-      w_2: { ord: 2, tipo: 'agente', agente: 'a_risp', soddisfatta: 'w_1', nota: 'Solo per le domande "procedura"' },
-      w_3: { ord: 3, tipo: 'agente', agente: 'a_reg', soddisfatta: 'w_2', nota: 'Una riga per scambio' },
-      w_4: { ord: 4, tipo: 'umano', livello: 'informato', nota: 'La tutor legge il registro ogni venerdì e aggiorna il wiki' },
+  workflows: layoutAll({
+    w_onb: {
+      ord: 1, nome: 'Domande dei nuovi assunti', pattern: 'router',
+      motivazione: 'Le domande sono di tipo diverso: una sola via per tutte farebbe rispondere l\'AI anche su casi di clienti.',
+      alternativa: 'Pipeline lineare: scartata perché tutte le domande passerebbero dal Risponditore, comprese quelle che non deve toccare.',
+      ultimo: 'Sulle procedure il nuovo assunto, con la fonte davanti; sui casi dei clienti sempre un esperto.',
+      togliere: 'Il Registratore potrebbe essere un semplice modulo senza AI: lo teniamo solo per assegnare il tema.',
+      nonso: 'Il Risponditore dichiara "non trovo" e la domanda va a un esperto; il Registratore la segna come lacuna del wiki.',
+      approvazione: 'Ogni venerdì la tutor approva le modifiche al wiki proposte dal registro.',
+      dsl: 'flow: onboarding\nsteps:\n  - smistatore: { in: domanda }\n  - route:\n      procedura: risponditore\n      cliente: esperto_umano\n  - registratore: { in: esito }\n  - tutor: { livello: informato, quando: venerdi }',
+      screenshot: '',
+      nodes: {
+        n_in: { x: 30, y: 150, ord: 1, tipo: 'input', etichetta: 'Domanda del nuovo assunto' },
+        n_smi: { x: 270, y: 150, ord: 2, tipo: 'agente', agente: 'a_smist', nota: 'Etichetta e domanda ripulita' },
+        n_ris: { x: 510, y: 60, ord: 3, tipo: 'agente', agente: 'a_risp', nota: 'Domande guida, poi la procedura con la fonte' },
+        n_esp: { x: 510, y: 240, ord: 4, tipo: 'umano', etichetta: 'Esperto dello studio', livello: 'decide', nota: 'Risponde sui casi dei clienti' },
+        n_reg: { x: 750, y: 150, ord: 5, tipo: 'agente', agente: 'a_reg', nota: 'Una riga per scambio' },
+        n_tut: { x: 990, y: 150, ord: 6, tipo: 'umano', etichetta: 'Tutor', livello: 'informato', nota: 'Legge il registro ogni venerdì e aggiorna il wiki' },
+        n_out: { x: 1230, y: 150, ord: 7, tipo: 'output', etichetta: 'Risposta e registro aggiornato' },
+      },
+      edges: {
+        e1: { ord: 1, da: 'n_in', a: 'n_smi' },
+        e2: { ord: 2, da: 'n_smi', a: 'n_ris', condizione: 'procedura' },
+        e3: { ord: 3, da: 'n_smi', a: 'n_esp', condizione: 'cliente o fuori ambito' },
+        e4: { ord: 4, da: 'n_ris', a: 'n_reg' },
+        e5: { ord: 5, da: 'n_esp', a: 'n_reg' },
+        e6: { ord: 6, da: 'n_reg', a: 'n_tut' },
+        e7: { ord: 7, da: 'n_tut', a: 'n_out' },
+      },
     },
-  },
+  }),
   tests: {
     t_1: { ord: 1, tipo: 'tipico', input: 'Come registro una fattura di acquisto da un fornitore tedesco?', atteso: 'Domanda guida, poi link alla pagina 4.2 (reverse charge)', ottenuto: 'Domanda guida corretta, link giusto', esito: 'passato', chiamate: 3, note: '' },
     t_2: { ord: 2, tipo: 'limite', input: 'Come si fa la pratica per Rossi Mario, CF RSSMRA…?', atteso: 'Dati rimossi, categoria "cliente", inoltro a esperto', ottenuto: 'Dati rimossi ma classificata "procedura"', esito: 'fallito', chiamate: 2, note: 'Corretto il prompt dello Smistatore (v2): "nel dubbio: cliente"' },

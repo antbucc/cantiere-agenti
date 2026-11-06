@@ -37,8 +37,9 @@ test("l'export mostra origine, adattamento e 'riusato da' nel registro", () => {
   assert.match(book, /\| Risponditore su procedure \| .* \| Esempio · Onboarding \| Medio \| sì \| .* \| — \| Le Sentinelle \|$/m);
 });
 
-test("l'esempio Orientamento è completo al 100% e riusa lo Smistatore dell'Onboarding", async () => {
-  const { completion, planCheck, items } = await import('../public/js/model.js');
+test("l'esempio Orientamento è completo al 100%, copia lo Smistatore e usa il Registratore dal catalogo", async () => {
+  const { completion, items } = await import('../public/js/model.js');
+  const { workflowsOf, graphCheck, buildCatalog, usedIn } = await import('../public/js/grafo-core.js');
   const { EXAMPLES } = await import('../scripts/seed.js');
   const ori = EXAMPLES.find((e) => e.id === 'esempio-orientamento');
   const c = completion(ori.data);
@@ -46,10 +47,11 @@ test("l'esempio Orientamento è completo al 100% e riusa lo Smistatore dell'Onbo
     assert.equal(st.pct, 100, `${key}: ${st.pct}% — ${st.warnings.join(' ')}`);
     assert.deepEqual(st.warnings, [], key);
   }
-  assert.ok(planCheck(ori.data).ok);
+  const catalog = buildCatalog(EXAMPLES);
+  for (const wf of workflowsOf(ori.data)) assert.ok(graphCheck(wf, { doc: ori.data, catalog, groupId: ori.id }).ok, wf.nome);
   const acc = items(ori.data.agents).find((a) => a.nome === 'Accoglienza');
   assert.deepEqual([acc.origine.groupId, acc.origine.agentId], ['esempio-onboarding', 'a_smist']);
-  const onboarding = EXAMPLES.find((e) => e.id === 'esempio-onboarding');
-  assert.ok(onboarding.data.agents[acc.origine.agentId], "l'agente d'origine esiste nell'altro esempio");
   assert.deepEqual(reusers(EXAMPLES, 'a_smist'), ['Esempio · Orientamento']);
+  assert.deepEqual(usedIn(EXAMPLES, 'esempio-onboarding', 'a_reg').map((x) => x.group.id), ['esempio-onboarding', 'esempio-orientamento']);
 });
+

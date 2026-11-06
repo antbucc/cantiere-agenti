@@ -31,12 +31,16 @@ test('ogni agente ha il prompt completo in un blocco di codice e la storia delle
   assert.match(md, /- \*\*v2\*\* \(.*\) — Classificava come "procedura"/);
 });
 
-test('il workflow elenca i passi e la verifica del piano', () => {
+test('la parte da sola: schede degli agenti, workflow con diagramma Mermaid e verifica del grafo', () => {
   const md = groupToMarkdown(group);
-  assert.match(md, /1\. 🤖 \*\*Smistatore\*\* — precondizioni da: input umano iniziale/);
-  assert.match(md, /2\. 🤖 \*\*Risponditore su procedure\*\* — precondizioni da: passo 1/);
-  assert.match(md, /4\. 👤 \*\*Umano nel ciclo\*\* — È informato/);
-  assert.match(md, /✅ Ogni precondizione è coperta/);
+  assert.match(md, /^### Smistatore$/m);
+  assert.match(md, /nei workflow: «Domande dei nuovi assunti»/);
+  assert.match(md, /^### Domande dei nuovi assunti$/m);
+  assert.match(md, /```mermaid\nflowchart LR\n/);
+  assert.match(md, /n2 -->\|"procedura"\| n3/);
+  assert.match(md, /2\. 🤖 \*\*Smistatore\*\*: Etichetta e domanda ripulita → Risponditore su procedure se procedura; Esperto dello studio se cliente o fuori ambito/);
+  assert.match(md, /👤 \*\*Tutor\*\* — È informato/);
+  assert.match(md, /✅ Ogni passo riceve ciò che gli serve/);
 });
 
 test('le celle non rompono la tabella', () => {
@@ -56,19 +60,30 @@ test('i prompt con backtick usano un recinto più lungo', () => {
   assert.match(md, /````text\nusa ```json``` per rispondere\n````/);
 });
 
-test('il libro: una parte per Task Force in ordine di settore, registro e lezioni in appendice', () => {
-  const other = { id: 'g2', name: 'Le Sentinelle', data: { titolo: 'Triage', settore: 'Cura e salute', competenze: { lezioni: 'Meno agenti.' } } };
-  const md = bookToMarkdown([group, other]);
-  const md2 = bookToMarkdown([other, group]); // l'ordine di inserimento non conta: decide il settore
-  assert.equal(md2, md.replace(/\*Generato il [^*]*\*/, (m) => m));
-  assert.match(md, /- \*\*Amministrazione e servizi\*\*\n  - Parte 1 · Il primo mese senza panico/);
-  assert.match(md, /^# Parte 1 · Il primo mese senza panico$/m);
-  assert.match(md, /^# Parte 2 · Triage$/m);
-  assert.ok(md.indexOf('# Parte 1 ·') < md.indexOf('# Parte 2 ·'));
+test('il libro: Parte I catalogo, Parte II workflow, poi le Task Force in ordine di settore', async () => {
+  const { EXAMPLES } = await import('../scripts/seed.js');
+  const gs = EXAMPLES.map(({ id, name, data }) => ({ id, name, data }));
+  const md = bookToMarkdown([gs[1], gs[0]]); // l'ordine di inserimento non conta: decide il settore
+  const parts = [...md.matchAll(/^# (Parte [IVX]+ · .*|Appendice [AB] · .*)$/gm)].map((m) => m[1]);
+  assert.deepEqual(parts, [
+    'Parte I · Catalogo degli agenti', 'Parte II · I workflow',
+    'Parte III · Il primo mese senza panico', 'Parte IV · Lo sportello che fa domande',
+    'Appendice A · Registro degli agenti', 'Appendice B · Lezioni apprese',
+  ]);
+  const i = (t) => md.indexOf(t);
+  assert.ok(i('## Gli agenti di «Esempio · Onboarding»') < i('## Gli agenti di «Esempio · Orientamento»'));
+  assert.ok(i('# Parte I ·') < i('### Smistatore') && i('### Smistatore') < i('# Parte II ·'), 'le schede stanno nel catalogo');
+  assert.match(md, /^## Registro settimanale delle domande · Esempio · Orientamento$/m);
+  // il Registratore dell'Onboarding è usato anche dall'Orientamento, per riferimento
+  assert.match(md, /nei workflow: «Domande dei nuovi assunti», «Registro settimanale delle domande» \(Esempio · Orientamento\)/);
+  assert.match(md, /🤖 \*\*Registratore\*\* \*\(dal catalogo · Esempio · Onboarding\)\*/);
+  // nelle parti delle Task Force i capitoli 5–7 rimandano alle Parti I e II
+  const parteIII = md.slice(i('# Parte III ·'), i('# Parte IV ·'));
+  assert.match(parteIII, /Le schede complete sono nella \*\*Parte I · Catalogo degli agenti\*\*/);
+  assert.match(parteIII, /I diagrammi e la verifica sono nella \*\*Parte II · I workflow\*\*/);
+  assert.doesNotMatch(parteIII, /```mermaid/);
   assert.equal([...md.matchAll(/^## Capitolo 11 · Competenze e lezioni$/gm)].length, 2);
-  assert.match(md, /^# Appendice A · Registro degli agenti$/m);
-  assert.match(md, /\| Smistatore \| .* \| Esempio · Onboarding \| Piccolo \| no \|/);
-  assert.match(md, /\| Risponditore su procedure \| .* \| sì \|/);
-  assert.match(md, /^# Appendice B · Lezioni apprese$/m);
-  assert.match(md, /## Le Sentinelle\n\n\*\*Lezioni\.\*\* Meno agenti\./);
+  assert.match(md, /\| Registratore \| .* \| Esempio · Onboarding \| Piccolo \| no \| .* \| Domande dei nuovi assunti, Registro settimanale delle domande \(Esempio · Orientamento\) \|/);
+  assert.match(md, /## Esempio · Orientamento\n\n\*\*Lezioni\.\*\* 1\. L'agente più utile/);
 });
+

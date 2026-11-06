@@ -9,8 +9,9 @@
 
 import {
   FIELDS, CRITERI, OUTPUTS, DOMANDE_ETICA, COMPETENZE, TEST_QUOTE, TEST_TIPI,
-  items, filled, planCheck,
+  items, filled,
 } from './model.js';
+import { workflowsOf, graphOf, graphCheck, unusedAgents, nodeLabel } from './grafo-core.js';
 
 // ---------------------------------------------------------------------------
 // Schede dei campi: { cosa, buona }
@@ -77,6 +78,11 @@ export const FIELD_GUIDE = {
   'workflow.passi': { cosa: 'Il flusso raccontato in parole.', buona: 'Una storia leggibile da chi non ha visto lo schema.' },
   'workflow.dsl': { cosa: 'La definizione del workflow esportata dalla piattaforma.', buona: 'Copiata dalla piattaforma che usate (facoltativa).' },
   'workflow.screenshot': { cosa: 'Lo screenshot del workflow (facoltativo).', buona: 'Un link.' },
+  'workflow.nome': { cosa: 'Il nome del workflow.', buona: 'Dice cosa fa e per chi (es. «Risposte alle richieste di informazioni»), non il nome della tecnologia.' },
+  'workflow.nodes.etichetta': { cosa: 'Chi o cosa è questo nodo.', buona: "Per un umano il ruolo preciso (es. «Segreteria»); per ingresso e uscita cosa entra o esce (es. «Richiesta della persona»)." },
+  'workflow.nodes.livello': { cosa: "Cosa fa la persona in questo passo.", buona: 'È informata, approva o decide: più è alto il rischio, più deve contare.' },
+  'workflow.nodes.nota': { cosa: 'Cosa succede in questo passo.', buona: 'Una riga concreta: cosa riceve, cosa produce, cosa passa avanti.' },
+  'workflow.edges.condizione': { cosa: 'Quando si prende questa freccia.', buona: 'Una condizione chiara e verificabile (es. «categoria = procedura»), diversa per ogni uscita dello stesso nodo.' },
   'workflow.steps.agente': { cosa: 'Quale agente lavora in questo passo.', buona: 'Ogni agente deve comparire almeno una volta.' },
   'workflow.steps.soddisfatta': { cosa: "Chi fornisce ciò che serve all'agente per partire.", buona: "L'input iniziale o un passo precedente i cui effetti coprono le precondizioni." },
   'workflow.steps.livello': { cosa: "Cosa fa la persona in questo passo.", buona: 'È informata, approva o decide: più è alto il rischio, più deve contare.' },
@@ -127,6 +133,8 @@ export function guideKey(path) {
   if (['personas', 'stories', 'tests'].includes(p[0]) && p.length === 3) return `${p[0]}.${p[2]}`;
   if (p[0] === 'agents' && p.length === 3) return `agents.${p[2]}`;
   if (p[0] === 'workflow' && p[1] === 'steps' && p.length === 4) return `workflow.steps.${p[3]}`;
+  if (p[0] === 'workflows' && p.length === 3) return `workflow.${p[2]}`;
+  if (p[0] === 'workflows' && (p[2] === 'nodes' || p[2] === 'edges') && p.length === 5) return `workflow.${p[2]}.${p[4]}`;
   if (p[0] === 'analisi' && /^out\d$/.test(p[1] || '')) return `analisi.out.${p[2]}`;
   if (p[0] === 'etica' && /^q\d+$/.test(p[1] || '')) return `etica.q.${p[2]}`;
   if (p[0] === 'competenze' && /^c\d$/.test(p[1] || '')) return `competenze.c.${p[2]}`;
@@ -158,6 +166,7 @@ export const GLOSSARIO = [
   { id: 'pipeline', termine: 'Pipeline', sinonimi: ['pipeline', 'in fila', 'sequenza'], definizione: "Pattern in cui gli agenti lavorano in fila: l'output di uno è l'input del successivo. Adatto quando ogni richiesta segue sempre gli stessi passi.", esempio: "In un'officina: diagnosi → preventivo → riparazione → collaudo." },
   { id: 'router', termine: 'Router', sinonimi: ['router', 'smista', 'smistamento'], definizione: "Pattern in cui un primo agente classifica la richiesta e la manda al percorso giusto. Adatto quando le richieste sono di tipi diversi e alcune non devono passare dall'AI.", esempio: "Il centralino di un ospedale smista le chiamate tra prenotazioni, informazioni e urgenze." },
   { id: 'critico', termine: 'Produttore e critico', sinonimi: ['produttore', 'critico', 'revisore'], definizione: "Pattern in cui un agente produce un risultato e un secondo lo controlla rispetto a criteri o fonti, prima che arrivi alla persona. Il critico approva o segnala, di solito senza riscrivere.", esempio: "In una redazione, un agente scrive il riassunto di un articolo e un altro controlla che le cifre corrispondano al testo." },
+  { id: 'grafo', termine: 'Workflow come grafo', sinonimi: ['grafo', 'freccia', 'frecce', 'nodo', 'nodi', 'collegare', 'collegamento', 'ritorno'], definizione: "Un workflow si disegna come un grafo: i nodi sono l'ingresso, gli agenti, le persone (umano nel ciclo) e l'uscita; una freccia da A a B dice che gli effetti di A soddisfano le precondizioni di B. Un router ha più frecce in uscita, ognuna con una condizione. Una freccia di ritorno torna indietro, per esempio dal critico al produttore quando c'è da correggere.", esempio: "In un'officina: Accettazione → Diagnosi → (se serve un pezzo) Magazzino → Riparazione → Collaudo → (se non passa, ritorno) Riparazione → Consegna." },
   { id: 'umano', termine: 'Umano nel ciclo', sinonimi: ['umano nel ciclo', 'human in the loop', 'informato', 'approva', 'decide', 'supervisione'], definizione: "Il punto in cui una persona interviene nel workflow. Può essere informata (vede cosa succede), approvare (nulla procede senza il suo sì) o decidere (la scelta è sua). Più alto è il rischio, più la persona deve contare.", esempio: "Un sistema propone l'orario dei turni; il responsabile lo approva prima che venga pubblicato." },
   { id: 'prompt', termine: 'Prompt', sinonimi: ['prompt', 'istruzioni'], definizione: "Le istruzioni date al modello. Un buon prompt per un agente dice: il ruolo, cosa riceve, il formato della risposta, cosa non deve mai fare e cosa fare se non sa.", esempio: "«Sei il bibliotecario digitale. Ricevi una richiesta di un lettore. Rispondi con al massimo tre titoli dal catalogo. Se nessun titolo corrisponde, dillo.»" },
   { id: 'versioni', termine: 'Versioni del prompt', sinonimi: ['versione', 'versioni', 'congela', 'congelare'], definizione: "Ogni volta che cambiate un prompt dopo una prova, ne congelate una copia con una nota su cosa non andava. La storia delle versioni mostra come avete imparato dai test.", esempio: "«v2: inventava i titoli quando il catalogo era vuoto; aggiunta la regola: se non trovi nulla, dillo.»" },
@@ -255,18 +264,29 @@ const STEPS = {
     return out;
   },
   workflow(d) {
-    const out = missing(d, [S('workflow.pattern', 'Pattern', 'select'), S('workflow.motivazione', 'Perché questo pattern')]);
-    const steps = items(d.workflow?.steps);
-    if (steps.length < 2) out.push(A(`Aggiungete i passi del workflow: ne servono almeno 2 (ora ${steps.length})`, '+ Passo agente'));
-    if (!steps.some((s) => s.tipo === 'umano')) out.push(A("Aggiungete almeno un passo con l'umano nel ciclo", '+ Passo umano'));
-    steps.forEach((s, i) => {
-      const b = `workflow.steps.${s.id}`;
-      if (s.tipo === 'umano') out.push(...missing(d, [S(`${b}.livello`, `Passo ${i + 1} · L'umano…`, 'select')]));
-      else out.push(...missing(d, [S(`${b}.agente`, `Passo ${i + 1} · Agente`, 'select'), S(`${b}.soddisfatta`, `Passo ${i + 1} · Precondizioni soddisfatte da…`, 'select')]));
-    });
-    const plan = planCheck(d);
-    for (const c of plan.checks) if (!c.ok && steps.length >= 2 && c.label.startsWith('Ogni')) out.push(A(`Verifica del piano: ${c.label.toLowerCase()} — non ancora.${c.detail ? ' ' + c.detail + '.' : ''}`, null));
-    out.push(...missing(d, FIELDS.workflow.slice(1).map((f) => S(`workflow.${f.key}`, f.label))));
+    const wfs = workflowsOf(d);
+    if (!wfs.length) return [A('Create il primo workflow: componete gli agenti in un grafo', '+ Nuovo workflow')];
+    // i workflow vecchi (lineari) vengono convertiti al volo: li leggiamo dalla vista convertita
+    const view = { ...d, workflows: Object.fromEntries(wfs.map((w) => [w.id, w])) };
+    const out = [];
+    for (const wf of wfs) {
+      const b = `workflows.${wf.id}`;
+      const n = wf.nome || 'Workflow';
+      out.push(...missing(view, [S(`${b}.nome`, 'Nome del workflow'), S(`${b}.pattern`, `«${n}» · Pattern`, 'select'), S(`${b}.motivazione`, `«${n}» · Perché questo pattern`)]));
+      const { nodes, edges } = graphOf(wf);
+      const label = (id) => nodeLabel(nodes.find((x) => x.id === id) || {}, d);
+      const check = graphCheck(wf, { doc: d });
+      const button = { "Almeno un passo con l'umano nel ciclo": 'Umano nel ciclo', "C'è un ingresso e un'uscita": 'Uscita', 'Almeno due passi': 'Agenti' };
+      for (const c of check.checks.filter((x) => !x.ok && !x.label.startsWith('Le uscite'))) {
+        out.push(A(`«${n}»: ${c.label.toLowerCase()} — non ancora.${c.detail ? ' ' + c.detail + '.' : ''}`, button[c.label] || null, '.grafo'));
+      }
+      for (const node of nodes.filter((x) => x.tipo === 'umano')) out.push(...missing(view, [S(`${b}.nodes.${node.id}.livello`, `«${n}» · ${nodeLabel(node, d)} · L'umano…`, 'select')]));
+      const routers = new Set(nodes.filter((x) => edges.filter((e) => e.da === x.id && !e.ritorno).length >= 2).map((x) => x.id));
+      for (const e of edges.filter((x) => routers.has(x.da) && !x.ritorno)) out.push(...missing(view, [S(`${b}.edges.${e.id}.condizione`, `«${n}» · ${label(e.da)} → ${label(e.a)} · Condizione`)]));
+      out.push(...missing(view, FIELDS.workflow.slice(1).map((f) => S(`${b}.${f.key}`, `«${n}» · ${f.label}`))));
+    }
+    const unused = unusedAgents(d);
+    if (unused.length) out.push(A(`Agenti non usati in nessun workflow: ${unused.map((a) => a.nome || 'senza nome').join(', ')}. Aggiungeteli al grafo (o toglieteli)`, null, '.grafo'));
     return out;
   },
   tests(d) {

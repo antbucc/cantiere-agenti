@@ -197,9 +197,9 @@ export function createApp({ dbFile, courseCode, teacherCode, env = process.env, 
     if (fmt === 'md') {
       res.type('text/markdown; charset=utf-8');
       if (download) disposition('md');
-      return res.send(kind === 'book' ? bookToMarkdown(groups) : groupToMarkdown(groups[0]));
+      return res.send(kind === 'book' ? bookToMarkdown(groups) : groupToMarkdown(groups[0], { groups: store.listGroups() }));
     }
-    const files = kind === 'book' ? bookProject(groups) : groupProject(groups[0]);
+    const files = kind === 'book' ? bookProject(groups) : groupProject(groups[0], store.listGroups());
     if (fmt === 'tex') {
       res.type('application/x-tex; charset=utf-8');
       if (download) disposition('tex');

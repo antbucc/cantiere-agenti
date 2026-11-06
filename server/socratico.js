@@ -11,6 +11,7 @@
 
 import { SECTIONS, PERSONA_TIPI, items, sectionStatus, filled } from '../public/js/model.js';
 import { fieldGuide, findConcepts, guideSteps, GLOSSARIO, isPressure, refusal } from '../public/js/guida.js';
+import { workflowsOf, readingOrder, graphCheck } from '../public/js/grafo-core.js';
 
 export { isPressure, refusal }; // usati anche dai test
 
@@ -42,7 +43,7 @@ export const SECTION_FOCUS = {
   mockup: "Tre momenti (prima, durante, dopo); dove si vede che è un'AI; dove l'agente fa domande socratiche; dove l'utente approva o corregge; cosa vede il supervisore; cosa succede quando l'AI sbaglia.",
   agents: "Da 2 a 5 agenti con un solo ruolo ciascuno; precondizioni ed effetti precisi, perché servono a comporre il workflow; regole e limiti; quando passano la mano a un umano; taglia del modello proporzionata; almeno un agente socratico.",
   prompt: "Per ogni agente un prompt con ruolo, input, formato della risposta, divieti espliciti e cosa fare se non sa; coerente con precondizioni ed effetti; versioni congelate con una nota su cosa non andava.",
-  workflow: "Pattern motivato e confrontato con un'alternativa; ogni precondizione soddisfatta dall'input o da un passo precedente; almeno un passo con l'umano nel ciclo (informato, approva, decide); chi ha l'ultima parola; cosa succede quando un agente non sa.",
+  workflow: "Uno o più workflow come grafo: ingresso, agenti (anche presi dal catalogo di altre Task Force), umano nel ciclo (informato, approva, decide), uscita. Ogni freccia significa che gli effetti di un nodo coprono le precondizioni del successivo; le uscite di un router hanno una condizione; il critico che rimanda indietro usa una freccia di ritorno. Pattern motivato e confrontato con un'alternativa; chi ha l'ultima parola; cosa succede quando un agente non sa.",
   tests: "12 casi: 6 tipici, 3 al limite, 2 di equità, 1 ostile; esito atteso scritto PRIMA di eseguire; ottenuto, esito e chiamate; correzioni dopo i test.",
   analisi: "Tre output reali (successo, fallimento, ambiguo) valutati su correttezza, completezza, tono, trasparenza, equità, costo; il danno peggiore se andasse in produzione domani; la domanda del Consiglio e la risposta.",
   etica: "Checklist di 10 domande: previsto venerdì, osservato sabato, cosa cambiamo; fascia dell'AI Act motivata; supervisione umana; bilancio di sobrietà.",
@@ -52,7 +53,7 @@ export const SECTION_FOCUS = {
 /** Concetti del glossario sempre utili in un capitolo. */
 const CHAPTER_CONCEPTS = {
   personas: ['persona', 'toccata'], stories: ['story', 'accettazione', 'negativa'], mockup: ['socratico', 'umano'],
-  agents: ['agente', 'precond', 'effetti'], prompt: ['prompt', 'versioni'], workflow: ['pipeline', 'router', 'critico', 'umano'],
+  agents: ['agente', 'precond', 'effetti'], prompt: ['prompt', 'versioni'], workflow: ['grafo', 'router', 'critico', 'umano'],
   tests: ['test'], analisi: ['allucinazione'], etica: ['aiact', 'sobrieta'], scenario: ['dati'],
 };
 
@@ -149,18 +150,12 @@ function sectionData(doc, key) {
       nome: a.nome, ruolo: a.ruolo, precond: a.precond, effetti: a.effetti, socratico: a.socratico, modello: a.modello,
       prompt: a.prompt, versioni: (a.versioni || []).map((v) => `v${v.n}: ${v.nota}`),
     }));
-    case 'workflow': {
-      const names = new Map(items(doc.agents).map((a) => [a.id, a.nome]));
-      const steps = items(doc.workflow?.steps);
-      const pos = new Map(steps.map((s, i) => [s.id, i + 1]));
-      return {
-        ...doc.workflow,
-        steps: steps.map((s, i) => (s.tipo === 'umano'
-          ? { passo: i + 1, tipo: 'umano', livello: s.livello, nota: s.nota }
-          : { passo: i + 1, tipo: 'agente', agente: names.get(s.agente), precondizioni_da: s.soddisfatta === 'input' ? 'input iniziale' : pos.get(s.soddisfatta) ? `passo ${pos.get(s.soddisfatta)}` : '', nota: s.nota })),
-        agenti_disponibili: items(doc.agents).map((a) => ({ nome: a.nome, precond: a.precond, effetti: a.effetti })),
-      };
-    }
+    case 'workflow': return workflowsOf(doc).map((wf) => ({
+      nome: wf.nome, pattern: wf.pattern, motivazione: wf.motivazione,
+      passi: readingOrder(wf, { doc }).map((r) => `${r.label}${r.node.tipo === 'umano' ? ` (${r.sub})` : ''} → ${r.to.map((t) => `${t.label}${t.condizione ? ` [${t.condizione}]` : ''}${t.ritorno ? ' [ritorno]' : ''}`).join(', ') || 'fine'}`),
+      problemi: graphCheck(wf, { doc }).checks.filter((c) => !c.ok).map((c) => c.label),
+      agenti_disponibili: items(doc.agents).map((a) => ({ nome: a.nome, precond: a.precond, effetti: a.effetti })),
+    }));
     case 'tests': return { casi: items(doc.tests).map((t, i) => ({ n: i + 1, ...t })), correzioni: doc.testsNote?.correzioni };
     default: return doc[key];
   }
