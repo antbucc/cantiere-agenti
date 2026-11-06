@@ -5,6 +5,7 @@ import os from 'node:os';
 import { createApp } from './app.js';
 import { defaultDbFile } from './db.js';
 import { seed } from '../scripts/seed.js';
+import { avviaOllamaIntegrato, stato as statoModello } from './ollama-integrato.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -71,7 +72,12 @@ function start() {
   if (process.env.SEED_ESEMPIO === '1') {
     try { seed(DB_FILE, { onlyIfEmpty: true }); } catch (e) { console.warn('Esempio non creato:', e.message); }
   }
-  const ctx = createApp({ dbFile: DB_FILE, courseCode: process.env.CODICE_CORSO.trim(), teacherCode: process.env.CODICE_DOCENTE.trim() });
+  // MODELLO_INTEGRATO=qwen2.5:7b: Ollama dentro l'app (prima di createApp, perché imposta AI_BASE_URL e AI_MODEL)
+  const fermaOllama = avviaOllamaIntegrato(process.env);
+  const ctx = createApp({
+    dbFile: DB_FILE, courseCode: process.env.CODICE_CORSO.trim(), teacherCode: process.env.CODICE_DOCENTE.trim(),
+    modelStatus: () => (statoModello.attivo ? { ...statoModello } : undefined),
+  });
 
   const server = ctx.app.listen(PORT, HOST, () => {
     console.log('\nAIM-PRO Lab');
@@ -95,6 +101,7 @@ function start() {
   });
 
   function shutdown() {
+    fermaOllama?.();
     server.close();
     ctx.close();
     process.exit(0);

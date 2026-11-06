@@ -56,38 +56,50 @@ Così il build non scarica strumenti da GitHub, che a volte risponde con errori 
 Il primo build richiede qualche minuto, perché installa TeX Live, e compila il libro di esempio per verificare che LaTeX funzioni.
 L'healthcheck è su `/salute`.
 
-**Guida socratica su Railway, con un modello open sullo stesso progetto.**
-La cartella [ollama/](ollama/) contiene un secondo servizio: Ollama con `qwen2.5:7b` (Apache 2.0), raggiungibile solo
-dall'app sulla rete privata di Railway. I testi degli studenti non escono dal progetto.
+**Guida socratica su Railway con un modello open: la via più semplice (Ollama integrato).**
+L'immagine dell'app contiene già Ollama (solo CPU). Basta **una variabile** nel servizio dell'app:
+
+```
+MODELLO_INTEGRATO=qwen2.5:7b
+```
+
+Al riavvio l'app:
+1. avvia Ollama al proprio interno;
+2. scarica il modello (4,7 GB, qualche minuto la prima volta) nel **Volume** dell'app, se ha almeno 6 GB liberi;
+   altrimenti lo scarica sul disco del container, e lo riscarica a ogni riavvio;
+3. lo carica in memoria;
+4. si collega da sola, con `AI_BASE_URL`, `AI_MODEL` e `SOCRATICO_PROFILO=leggero` impostati in automatico.
+
+Potete seguire l'avanzamento su **`https://<vostro-dominio>/salute`**:
+`"fase": "download", "progresso": 45` … poi `"fase": "pronto"`. Fino ad allora la guida risponde in modalità di base.
+
+Servono circa **8 GB di RAM** per il servizio. Se Ollama si ferma più volte, `/salute` lo segnala: di solito vuol dire che la RAM
+non basta. Nel log del servizio le righe che iniziano con `[ollama]` raccontano cosa succede.
+
+**In alternativa, un servizio Ollama separato.** La cartella [ollama/](ollama/) contiene un secondo servizio: Ollama con
+`qwen2.5:7b`, raggiungibile solo dall'app sulla rete privata. È più pulito, perché app e modello si riavviano in modo
+indipendente, ma richiede più configurazione:
 
 1. Nel progetto: **+ Create → GitHub Repo** → lo stesso repository. Rinominate il servizio **`Ollama`**.
-2. Nel servizio Ollama, **Settings**:
-   - **Root Directory**: `/ollama`;
-   - **Config-as-code / Railway config file**: `/ollama/railway.json`;
-   - nessun dominio pubblico.
-3. Risorse: servono **almeno 8 GB di RAM** e più vCPU possibile, perché il modello gira su CPU.
-   Il modello pesa 4,7 GB: con un **Volume** montato su `/root/.ollama` non viene riscaricato a ogni riavvio
-   (controllate che il limite del vostro piano basti). Senza Volume funziona lo stesso, ma a ogni riavvio
-   lo riscarica, in qualche minuto.
-4. Nel servizio **dell'app**, **Variables**:
+2. Nel servizio Ollama, **Settings**: Root Directory `/ollama`; Railway config file `/ollama/railway.json`;
+   nessun dominio pubblico; almeno 8 GB di RAM; un Volume su `/root/.ollama` è facoltativo.
+3. Nel servizio **dell'app**, **Variables** (senza `MODELLO_INTEGRATO`):
    ```
    AI_BASE_URL=http://${{Ollama.RAILWAY_PRIVATE_DOMAIN}}:11434/v1
    AI_MODEL=qwen2.5:7b
    SOCRATICO_PROFILO=leggero
    ```
-   `${{Ollama.…}}` è una variabile di riferimento di Railway: deve corrispondere al nome del servizio.
-5. Nel log del servizio Ollama aspettate `Ollama pronto con: qwen2.5:7b`. Prima di allora la guida risponde
-   «il modello non è ancora disponibile».
+4. Nel log del servizio Ollama aspettate `Ollama pronto con: qwen2.5:7b`.
 
 **Cosa aspettarsi.** Su CPU, con il profilo `leggero` (prompt corto, stesse regole), una risposta richiede circa 10–30 secondi
-(misurato solo CPU su un Mac M3; le vCPU di Railway possono essere più lente). Il servizio risponde a un gruppo alla volta.
-Il 7B scrive in un italiano meno curato del 14B: i controlli che garantiscono una guida non risolutiva sono gli stessi
+(misurato solo CPU su un Mac M3; le vCPU di Railway possono essere più lente). Ollama risponde a un gruppo alla volta.
+Il 7B scrive in un italiano meno curato del 14B: i controlli che rendono la guida non risolutiva sono gli stessi
 e non dipendono dal modello.
 
 | Opzione | Dove gira | Velocità | Qualità |
 | --- | --- | --- | --- |
 | `qwen2.5:14b`, profilo `completo` | Ollama sul portatile del docente (GPU), app in rete locale | 20–30 s | la migliore |
-| `qwen2.5:7b`, profilo `leggero` | servizio Ollama su Railway (CPU) | 10–30 s, un gruppo alla volta | buona |
+| `qwen2.5:7b`, profilo `leggero` | Ollama su Railway (integrato o servizio separato, CPU) | 10–30 s, un gruppo alla volta | buona |
 | `llama3.2:3b`, profilo `leggero` | come sopra, con meno RAM | 5–15 s | sconsigliato: sbaglia i pareri |
 
 
@@ -279,6 +291,7 @@ oppure Ollama (o vLLM) su un server con GPU: basta cambiare `AI_BASE_URL`.
 | `SOCRATICO_MODEL` | `AI_MODEL` | Modello usato dalla guida |
 | `SOCRATICO_TEMPERATURE` | `0.3` | Variabilità delle risposte |
 | `SOCRATICO_MAX_TOKENS` | `450` | Lunghezza massima di una risposta |
+| `MODELLO_INTEGRATO` | — | Avvia Ollama dentro l'app con questo modello (es. `qwen2.5:7b`) e lo collega da solo |
 | `SOCRATICO_PROFILO` | `completo` | `leggero` per modelli piccoli su CPU (es. Ollama su Railway): prompt più corto, stesse regole |
 | `SOCRATICO_CTX` | `4096` | Contesto del modello in token. I turni vecchi vengono scartati per restarci dentro, le regole mai |
 | `BOZZE_AI` | `on` | `off` spegne «Bozza con AI» su personas e storie |
@@ -319,6 +332,7 @@ server/
   export.js    parte e libro in Markdown (funzioni pure)
   latex.js     parte e libro in LaTeX: progetto per Overleaf
   pdf.js       compilazione del PDF con latexmk (coda e cache)
+  ollama-integrato.js  Ollama dentro l'app (MODELLO_INTEGRATO): avvio, download, stato in /salute
   zip.js       archivio zip minimo per il progetto Overleaf
   ai.js        bozza con AI (endpoint compatibile OpenAI)
   socratico.js guida socratica: regole, intenti, contesto, filtri, streaming dal modello

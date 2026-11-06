@@ -29,7 +29,7 @@ function sameCode(given, expected) {
 const slug = (s) => String(s || 'capitolo').normalize('NFD').replace(/[̀-ͯ]/g, '')
   .replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'capitolo';
 
-export function createApp({ dbFile, courseCode, teacherCode, env = process.env }) {
+export function createApp({ dbFile, courseCode, teacherCode, env = process.env, modelStatus = () => undefined }) {
   if (!courseCode || !teacherCode) throw new Error('CODICE_CORSO e CODICE_DOCENTE devono essere impostati in .env');
   const store = openDb(dbFile);
   const app = express();
@@ -241,7 +241,8 @@ export function createApp({ dbFile, courseCode, teacherCode, env = process.env }
 
   // Healthcheck senza codice (Railway, reverse proxy, monitoraggio)
   app.get('/salute', (req, res) => {
-    try { store.db.prepare('SELECT 1').get(); res.json({ ok: true }); } catch { res.status(503).json({ ok: false }); }
+    // con Ollama integrato mostra anche lo stato del modello (avvio, download %, caricamento, pronto, errore)
+    try { store.db.prepare('SELECT 1').get(); res.json({ ok: true, modello: modelStatus() }); } catch { res.status(503).json({ ok: false }); }
   });
 
   app.use('/api', api);
