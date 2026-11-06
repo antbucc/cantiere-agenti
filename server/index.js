@@ -91,7 +91,10 @@ function start() {
     console.log(`  database:      ${DB_FILE}`);
     const e = process.env;
     console.log(`  bozza con AI:  ${e.AI_BASE_URL && e.AI_MODEL && e.BOZZE_AI !== 'off' ? e.AI_MODEL + ' @ ' + e.AI_BASE_URL : 'disattivata'}`);
-    console.log(`  guida socratica: ${e.AI_BASE_URL && e.SOCRATICO !== 'off' && (e.SOCRATICO_MODEL || e.AI_MODEL) ? (e.SOCRATICO_MODEL || e.AI_MODEL) + ' @ ' + e.AI_BASE_URL : 'disattivata'}\n`);
+      const guida = e.SOCRATICO === 'off' ? 'spenta'
+      : e.ANTHROPIC_API_KEY && e.SOCRATICO_PROVIDER !== 'openai' ? `${e.CLAUDE_MODEL || 'claude-opus-5-5'} @ Anthropic`
+        : e.AI_BASE_URL && (e.SOCRATICO_MODEL || e.AI_MODEL) ? `${e.SOCRATICO_MODEL || e.AI_MODEL} @ ${e.AI_BASE_URL}` : 'modalità di base (nessun modello)';
+    console.log(`  guida socratica: ${guida}\n`);
   });
 
   server.on('error', (e) => {

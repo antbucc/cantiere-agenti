@@ -52,6 +52,9 @@ export function avviaOllamaIntegrato(env = process.env) {
   env.SOCRATICO_PROFILO ||= 'leggero';
   Object.assign(stato, { attivo: true, fase: 'avvio', modello, progresso: null, errore: null });
   log(`modello ${modello}, cartella ${modelli}`);
+  if (env.ANTHROPIC_API_KEY && env.SOCRATICO_PROVIDER !== 'openai') {
+    log('la Guida socratica usa Claude (ANTHROPIC_API_KEY): Ollama integrato serve solo alle «Bozze con AI». Se non vi servono, togliete MODELLO_INTEGRATO e liberate la RAM.');
+  }
 
   let figlio = null;
   let fermato = false;

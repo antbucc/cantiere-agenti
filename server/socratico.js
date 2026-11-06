@@ -12,6 +12,7 @@
 import { SECTIONS, PERSONA_TIPI, items, sectionStatus, filled } from '../public/js/model.js';
 import { fieldGuide, findConcepts, guideSteps, GLOSSARIO, isPressure, refusal } from '../public/js/guida.js';
 import { workflowsOf, readingOrder, graphCheck } from '../public/js/grafo-core.js';
+import { claudeEnabled, claudeModel, streamClaude } from './claude.js';
 
 export { isPressure, refusal }; // usati anche dai test
 
@@ -31,9 +32,11 @@ export const PROFILI = {
 export const profilo = (env = process.env) => (env.SOCRATICO_PROFILO === 'leggero' ? 'leggero' : 'completo');
 
 export function socraticoEnabled(env = process.env) {
-  return Boolean(env.AI_BASE_URL && (env.SOCRATICO_MODEL || env.AI_MODEL)) && env.SOCRATICO !== 'off';
+  if (env.SOCRATICO === 'off') return false;
+  return claudeEnabled(env) || Boolean(env.AI_BASE_URL && (env.SOCRATICO_MODEL || env.AI_MODEL));
 }
-export const socraticoModel = (env = process.env) => env.SOCRATICO_MODEL || env.AI_MODEL;
+/** Il modello della guida: Claude se c'è ANTHROPIC_API_KEY, altrimenti quello dell'endpoint compatibile OpenAI. */
+export const socraticoModel = (env = process.env) => (claudeEnabled(env) ? claudeModel(env) : env.SOCRATICO_MODEL || env.AI_MODEL);
 
 /** Cosa conta in ogni capitolo: orienta le domande del modello. */
 export const SECTION_FOCUS = {
@@ -216,8 +219,8 @@ export function buildContext(doc, { section, field, intent = 'libero', question 
  * silenzio: meglio rinunciare ai turni vecchi che alle regole.
  */
 export function promptBudget(env = process.env) {
-  const ctx = Number(env.SOCRATICO_CTX) || 4096;
-  const out = Number(env.SOCRATICO_MAX_TOKENS) || PROFILI[profilo(env)].maxTokens;
+  const ctx = Number(env.SOCRATICO_CTX) || (claudeEnabled(env) ? 16000 : 4096); // Claude: contesto ampio, teniamo più conversazione
+  const out = claudeEnabled(env) ? 1000 : Number(env.SOCRATICO_MAX_TOKENS) || PROFILI[profilo(env)].maxTokens;
   return Math.max(2000, (ctx - out - 150) * 3); // ~3 caratteri per token in italiano (stima prudente)
 }
 
@@ -400,13 +403,8 @@ function clean(t) {
   return s;
 }
 
-/**
- * Chiede al modello una risposta in streaming e restituisce i pezzi di testo.
- * Generatore asincrono: for await (const t of streamSocratico(...)) res.write(t)
- */
-export async function* streamSocratico({ doc, section, field, intent, messages }, env = process.env, signal) {
-  const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
-  if (isPressure(lastUser)) { yield refusal(field); return; } // non serve il modello per dire di no
+/** Testo in streaming da un endpoint compatibile OpenAI (Ollama, vLLM, …). */
+async function* openaiText(msgs, env, signal) {
   const url = env.AI_BASE_URL.replace(/\/+$/, '') + '/chat/completions';
   const headers = { 'Content-Type': 'application/json' };
   if (env.AI_API_KEY) headers.Authorization = `Bearer ${env.AI_API_KEY}`;
@@ -416,7 +414,7 @@ export async function* streamSocratico({ doc, section, field, intent, messages }
     signal,
     body: JSON.stringify({
       model: socraticoModel(env),
-      messages: buildMessages(doc, { section, field, intent, messages, profile: profilo(env) }, promptBudget(env)),
+      messages: msgs,
       temperature: Number(env.SOCRATICO_TEMPERATURE ?? 0.3),
       max_tokens: Number(env.SOCRATICO_MAX_TOKENS) || PROFILI[profilo(env)].maxTokens,
       stream: true,
@@ -426,12 +424,6 @@ export async function* streamSocratico({ doc, section, field, intent, messages }
   if (!res.ok || !res.body) throw new Error(`Il modello ha risposto ${res.status}`);
   const decoder = new TextDecoder();
   const strip = thinkFilter();
-  // testo del gruppo che la guida può citare liberamente: il campo attivo e i loro messaggi
-  const own = [field?.path ? getPath(doc, field.path) : '', ...messages.filter((m) => m.role === 'user').map((m) => m.content)]
-    .filter((t) => typeof t === 'string');
-  const sc = doc.scenario || {};
-  const guard = quoteGuard(own, [doc.titolo, doc.sintesi, sc.contesto, sc.problema, sc.processo, sc.stakeholder, sc.obiettivo].filter(Boolean).join(' '));
-  const sentences = sentenceGuard({ onSolution: () => refusal(field), fieldLabel: field?.label || '', knownText: JSON.stringify(doc) });
   let pending = '';
   for await (const bytes of res.body) {
     pending += decoder.decode(bytes, { stream: true });
@@ -440,16 +432,36 @@ export async function* streamSocratico({ doc, section, field, intent, messages }
     for (const line of lines) {
       const data = line.trim().replace(/^data:\s*/, '');
       if (!data || data.startsWith(':')) continue;
-      if (data === '[DONE]') break;
+      if (data === '[DONE]') return;
       let delta;
       try { delta = JSON.parse(data).choices?.[0]?.delta?.content; } catch { continue; }
-      if (delta) {
-        const text = sentences.push(guard(strip(delta)));
-        if (text) yield text;
-        if (sentences.done) return; // risposta chiusa alla prima domanda: interrompiamo il modello
-      }
+      if (delta) { const text = strip(delta); if (text) yield text; }
     }
-    if (pending.includes('[DONE]')) break;
+  }
+}
+
+/**
+ * Chiede al modello una risposta in streaming e restituisce i pezzi di testo,
+ * già passati dai controlli (citazioni, soluzioni consegnate, cifre di legge,
+ * una sola domanda). Il modello è Claude se c'è ANTHROPIC_API_KEY, altrimenti
+ * l'endpoint compatibile OpenAI (AI_BASE_URL).
+ * Generatore asincrono: for await (const t of streamSocratico(...)) res.write(t)
+ */
+export async function* streamSocratico({ doc, section, field, intent, messages }, env = process.env, signal) {
+  const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
+  if (isPressure(lastUser)) { yield refusal(field); return; } // non serve il modello per dire di no
+  const msgs = buildMessages(doc, { section, field, intent, messages, profile: profilo(env) }, promptBudget(env));
+  const source = claudeEnabled(env) ? streamClaude(msgs, env, signal) : openaiText(msgs, env, signal);
+  // testo del gruppo che la guida può citare liberamente: il campo attivo e i loro messaggi
+  const own = [field?.path ? getPath(doc, field.path) : '', ...messages.filter((m) => m.role === 'user').map((m) => m.content)]
+    .filter((t) => typeof t === 'string');
+  const sc = doc.scenario || {};
+  const guard = quoteGuard(own, [doc.titolo, doc.sintesi, sc.contesto, sc.problema, sc.processo, sc.stakeholder, sc.obiettivo].filter(Boolean).join(' '));
+  const sentences = sentenceGuard({ onSolution: () => refusal(field), fieldLabel: field?.label || '', knownText: JSON.stringify(doc) });
+  for await (const piece of source) {
+    const text = sentences.push(guard(piece));
+    if (text) yield text;
+    if (sentences.done) return; // risposta chiusa alla prima domanda: uscire dal ciclo ferma anche il modello
   }
   const rest = sentences.push(guard.flush()) + sentences.flush();
   if (rest) yield rest;

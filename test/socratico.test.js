@@ -269,3 +269,56 @@ test('i turni vecchi si scartano per restare nel contesto del modello, le regole
   assert.match(msgs.at(-1).content, /^ultima domanda/);
   assert.ok(msgs.length < messages.length + 2);
 });
+
+test('con ANTHROPIC_API_KEY la guida usa Claude (SDK ufficiale) con gli stessi controlli', async () => {
+  let req;
+  const sse = (type, data) => `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
+  const mock = http.createServer((r, res) => {
+    let body = '';
+    r.on('data', (c) => { body += c; });
+    r.on('end', () => {
+      req = { url: r.url, headers: r.headers, body: JSON.parse(body) };
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.write(sse('message_start', { message: { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-opus-5-5', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 1 } } }));
+      res.write(sse('content_block_start', { index: 0, content_block: { type: 'text', text: '' } }));
+      for (const t of ['Le **precondizioni** sono ciò che serve prima. ', 'Cosa deve avere in mano il vostro agente? ', 'E quale formato produce?']) {
+        res.write(sse('content_block_delta', { index: 0, delta: { type: 'text_delta', text: t } }));
+      }
+      res.write(sse('content_block_stop', { index: 0 }));
+      res.write(sse('message_delta', { delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 30 } }));
+      res.end(sse('message_stop', {}));
+    });
+  });
+  await new Promise((r) => mock.listen(0, r));
+  const env = { ANTHROPIC_API_KEY: 'sk-ant-finta', ANTHROPIC_BASE_URL: `http://127.0.0.1:${mock.address().port}` };
+  const ctx = createApp({ dbFile: ':memory:', courseCode: 'c', teacherCode: 'd', env });
+  const server = ctx.app.listen(0);
+  await new Promise((r) => server.once('listening', r));
+  const base = `http://127.0.0.1:${server.address().port}/api`;
+  const H = { 'X-Codice-Corso': 'c', 'Content-Type': 'application/json' };
+  try {
+    const cfg = await (await fetch(base + '/config', { headers: H })).json();
+    assert.deepEqual(cfg.socratico, { attivo: true, model: 'claude-opus-5-5' });
+    const g = ctx.store.createGroup({ name: 'Claude', data: exampleDoc });
+    const res = await fetch(base + '/socratico', {
+      method: 'POST', headers: H,
+      body: JSON.stringify({ groupId: g.id, section: 'agents', intent: 'domanda', messages: [{ role: 'user', content: 'Cosa sono le precondizioni?' }] }),
+    });
+    assert.equal(res.status, 200);
+    assert.equal(await res.text(), 'Le **precondizioni** sono ciò che serve prima. Cosa deve avere in mano il vostro agente?', 'una sola domanda');
+    assert.equal(req.url.split('?')[0], '/v1/messages');
+    assert.ok(req.headers.authorization === 'Bearer sk-ant-finta' || req.headers['x-api-key'] === 'sk-ant-finta', 'la chiave arriva al servizio');
+    assert.match(req.headers['anthropic-beta'], /server-side-fallback-2026-07-01/);
+    assert.equal(req.body.model, 'claude-opus-5-5');
+    assert.equal(req.body.stream, true);
+    assert.equal(req.body.fallbacks, 'default');
+    assert.deepEqual(req.body.output_config, { effort: 'low' });
+    assert.equal(req.body.temperature, undefined, 'niente temperature con questo modello');
+    assert.equal(req.body.system[0].text, SYSTEM_PROMPT);
+    assert.deepEqual(req.body.system[0].cache_control, { type: 'ephemeral' }, 'le regole vanno in cache');
+    assert.match(req.body.system[1].text, /COSA FARE ORA: Il gruppo ti fa una domanda/);
+    assert.deepEqual(req.body.messages.map((m) => m.role), ['user']);
+  } finally {
+    server.close(); ctx.close(); mock.close();
+  }
+});

@@ -56,6 +56,23 @@ Così il build non scarica strumenti da GitHub, che a volte risponde con errori 
 Il primo build richiede qualche minuto, perché installa TeX Live, e compila il libro di esempio per verificare che LaTeX funzioni.
 L'healthcheck è su `/salute`.
 
+**Guida socratica con Claude (Anthropic).** La via più veloce e affidabile, anche su Railway: basta la chiave API.
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+La guida usa allora `claude-opus-5-5` (cambiabile con `CLAUDE_MODEL`) tramite l'SDK ufficiale, in streaming, con:
+- `effort` basso (`CLAUDE_EFFORT=low`): per un tutor in chat conta la rapidità;
+- il prompt di sistema in cache, quindi le richieste successive costano meno;
+- il ripiego automatico (`fallbacks: "default"`): se il modello declina una richiesta per i suoi filtri di sicurezza,
+  il server la rifà con il modello consigliato.
+
+Le regole della guida e i controlli che la rendono non risolutiva sono gli stessi degli altri modelli. **Attenzione:** con Claude
+i testi su cui lavora la guida (scenario, campo attivo, conversazione) vengono inviati ad Anthropic. Ditelo agli studenti, e
+ricordate loro di non scrivere dati personali reali. Claude ha la precedenza su Ollama; con `SOCRATICO_PROVIDER=openai`
+si torna a Ollama. Le «Bozze con AI» continuano a usare l'endpoint compatibile OpenAI (`AI_BASE_URL`), se c'è.
+
 **Guida socratica su Railway con un modello open: la via più semplice (Ollama integrato).**
 L'immagine dell'app contiene già Ollama (solo CPU). Basta **una variabile** nel servizio dell'app:
 
@@ -300,6 +317,9 @@ oppure Ollama (o vLLM) su un server con GPU: basta cambiare `AI_BASE_URL`.
 | `SOCRATICO_MODEL` | `AI_MODEL` | Modello usato dalla guida |
 | `SOCRATICO_TEMPERATURE` | `0.3` | Variabilità delle risposte |
 | `SOCRATICO_MAX_TOKENS` | `450` | Lunghezza massima di una risposta |
+| `ANTHROPIC_API_KEY` | — | Guida socratica con Claude (ha la precedenza su Ollama) |
+| `CLAUDE_MODEL` | `claude-opus-5-5` | Modello Claude della guida |
+| `CLAUDE_EFFORT` | `low` | Quanto ragiona il modello: `low`, `medium`, `high` |
 | `MODELLO_INTEGRATO` | — | Avvia Ollama dentro l'app con questo modello (es. `qwen2.5:7b`) e lo collega da solo |
 | `SOCRATICO_PROFILO` | `completo` | `leggero` per modelli piccoli su CPU (es. Ollama su Railway): prompt più corto, stesse regole |
 | `SOCRATICO_CTX` | `4096` | Contesto del modello in token. I turni vecchi vengono scartati per restarci dentro, le regole mai |
@@ -365,6 +385,7 @@ server/
   zip.js       archivio zip minimo per il progetto Overleaf
   ai.js        bozza con AI (endpoint compatibile OpenAI)
   socratico.js guida socratica: regole, intenti, contesto, filtri, streaming dal modello
+  claude.js    Claude come modello della guida (SDK ufficiale @anthropic-ai/sdk)
 public/
   index.html, css/style.css
   js/model.js     modello dati, etichette, completamento, verifica del piano (condiviso con il server)
