@@ -238,9 +238,11 @@ curl -H "X-Codice-Docente: IL_CODICE" http://localhost:3000/api/export/book.pdf 
 curl -H "X-Codice-Corso: IL_CODICE" http://localhost:3000/api/export/esempio-onboarding.zip -o parte.zip
 ```
 
-## Guida socratica (LLM open)
+## Maia, la guida socratica
 
-In basso a destra c'è il pulsante **? Guida socratica**. Il numero accanto dice quanti passi mancano nel capitolo aperto.
+In basso a destra c'è **Maia**, una civetta (il simbolo di Atena) che prende il nome dalla *maieutica*, l'arte di Socrate
+di far nascere le idee con le domande. Si apre con un clic o con **Ctrl+K / ⌘K**, si chiude con **Esc**. Il numero accanto
+dice quanti passi mancano nel capitolo aperto; mentre pensa, la civetta guarda di qua e di là.
 La guida accompagna la Task Force **capitolo per capitolo e campo per campo**.
 
 **Il pulsante c'è sempre**, anche senza un modello collegato. In quel caso la guida lavora in **modalità di base**
@@ -252,12 +254,13 @@ se il modello è configurato ma non risponde (per esempio mentre il servizio Oll
 - prima le **azioni** che creano la struttura (es. «manca una persona toccata ma non utente», «congelate la prima versione del prompt»);
 - poi i **campi** da compilare, ognuno con la sua scheda: *a cosa serve* e *quando è buono*.
 
-I pulsanti sono **Mostrami** (porta al campo o al pulsante giusto e lo evidenzia), **Ragioniamoci insieme** (apre il dialogo
-su quel passo) e **Salta**. L'elenco completo dei passi è sotto la scheda. Quando un campo del percorso viene compilato,
+La scheda è compatta: il pulsante principale è **Ragioniamoci** (apre il dialogo su quel passo); accanto ci sono **Mostrami**
+(porta al campo o al pulsante giusto e lo evidenzia) e **Salta**. *Perché?* (a cosa serve il campo, quando è buono) e
+l'elenco completo dei passi sono richiudibili sotto la scheda. Quando un campo del percorso viene compilato,
 la guida lo nota e propone un **parere critico** prima di passare al successivo.
 
-**Le domande.** Se qualcosa non è chiaro, i gruppi chiedono, anche con le domande rapide come «Non capiamo cosa chiede
-questo campo», «Parere su…» o «Spiegateci: …». La guida risponde in modo **corretto** perché il server le passa:
+**Le domande.** Se qualcosa non è chiaro, i gruppi chiedono, anche con le (al massimo due) domande rapide sopra la casella
+di scrittura, come «Cosa chiede questo campo?» o «Dateci un parere». La guida risponde in modo **corretto** perché il server le passa:
 - il **glossario del corso** (definizioni ed esempi su casi diversi: precondizioni, criteri di accettazione, router, fasce dell'AI Act…);
 - la **scheda del campo** attivo;
 - lo stato del capitolo e i prossimi passi.
@@ -397,7 +400,7 @@ public/
   js/guida.js     schede dei campi, glossario del corso, percorso guidato (condiviso con il server)
   js/grafo-core.js workflow a grafo: conversione, verifica, disposizione, Mermaid (condiviso con il server)
   js/grafo.js     compositore a grafo del Capitolo 7
-  js/socratico.js pannello della guida socratica
+  js/socratico.js pannello di Maia, la guida socratica (civetta SVG, percorso, chat)
   js/app.js       router, barra in alto, menu, login, eventi
 scripts/seed.js   Task Force di esempio (scripts/esempi/ per l'esempio completo)
 scripts/check-latex.js  verifica di LaTeX nel build Docker
